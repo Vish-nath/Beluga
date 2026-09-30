@@ -30,5 +30,18 @@ render.experimental.xml
 # Google Services (e.g. APIs or Firebase)
 google-services.json
 
+# Local Python server and personal health data
+.venv/
+__pycache__/
+*.py[cod]
+data/
+*.sqlite3
+
 # Android Profiling
 *.hprof
+
+# Flutter generated files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
