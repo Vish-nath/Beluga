@@ -1,6 +1,6 @@
 # Beluga Health
 
-Mini-project: **AI-Powered Health Monitoring and Wellness Bot**.
+**AI-Powered Health Monitoring and Wellness Bot**.
 
 An Android and macOS health tracking prototype with a Flutter client, Python API, and SQLite database stored on the server. The Flutter app is a native Android app and macOS desktop app; both connect to the same API and account database.
 
