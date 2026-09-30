@@ -1,0 +1,12 @@
+{
+  "name": "Beluga Health",
+  "short_name": "Beluga",
+  "description": "Personal health tracking and reminders",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f5ef",
+  "theme_color": "#f5f5ef",
+  "icons": [
+    { "src": "/static/mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
