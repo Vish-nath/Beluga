@@ -214,10 +214,21 @@ class _AuthScreenState extends State<AuthScreen> {
           constraints: const BoxConstraints(maxWidth: 440),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(26),
-                child: Form(
+            child: TweenAnimationBuilder<double>(
+              duration: const Duration(milliseconds: 650),
+              curve: Curves.easeOutCubic,
+              tween: Tween(begin: 0, end: 1),
+              builder: (context, value, child) => Opacity(
+                opacity: value,
+                child: Transform.translate(
+                  offset: Offset(0, 24 * (1 - value)),
+                  child: child,
+                ),
+              ),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(26),
+                  child: Form(
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -267,6 +278,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       const SizedBox(height: 8),
                       const Text('Educational tracking only. This app does not diagnose or prescribe.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.black54)),
                     ],
+                  ),
                   ),
                 ),
               ),
@@ -319,7 +331,25 @@ class _HealthHomeState extends State<HealthHome> {
               labelType: NavigationRailLabelType.all,
               destinations: [for (var i = 0; i < _pages.length; i++) NavigationRailDestination(icon: Icon(_icons[i]), label: Text(_pages[i]))],
             ),
-          Expanded(child: page),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 360),
+              reverseDuration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.025, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: KeyedSubtree(key: ValueKey(_selected), child: page),
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: wide
@@ -359,24 +389,24 @@ class OverviewPage extends StatelessWidget {
             const Text('Your personal health check-in.'),
             const SizedBox(height: 18),
             Wrap(spacing: 12, runSpacing: 12, children: [
-              MetricCard(label: 'Steps', value: latest['steps']?.toString() ?? '—', icon: Icons.directions_walk),
-              MetricCard(label: 'Active minutes', value: latest['active_minutes']?.toString() ?? '—', icon: Icons.bolt_outlined),
-              MetricCard(label: 'Sleep hours', value: latest['sleep_hours']?.toString() ?? '—', icon: Icons.bedtime_outlined),
-              MetricCard(label: 'BMI', value: profile['bmi']?.toString() ?? '—', icon: Icons.monitor_weight_outlined),
+              AnimatedReveal(index: 0, child: MetricCard(label: 'Steps', value: latest['steps']?.toString() ?? '—', icon: Icons.directions_walk)),
+              AnimatedReveal(index: 1, child: MetricCard(label: 'Active minutes', value: latest['active_minutes']?.toString() ?? '—', icon: Icons.bolt_outlined)),
+              AnimatedReveal(index: 2, child: MetricCard(label: 'Sleep hours', value: latest['sleep_hours']?.toString() ?? '—', icon: Icons.bedtime_outlined)),
+              AnimatedReveal(index: 3, child: MetricCard(label: 'BMI', value: profile['bmi']?.toString() ?? '—', icon: Icons.monitor_weight_outlined)),
             ]),
             const SizedBox(height: 16),
-            Card(child: ListTile(
+            AnimatedReveal(index: 4, child: Card(child: ListTile(
               leading: const Icon(Icons.add_circle_outline),
               title: const Text('Log health measurements'),
               subtitle: const Text('Steps, sleep, glucose, or blood pressure'),
               onTap: () => onNavigate(1),
-            )),
-            Card(child: ListTile(
+            ))),
+            AnimatedReveal(index: 5, child: Card(child: ListTile(
               leading: const Icon(Icons.notifications_active_outlined),
               title: const Text('Manage reminders'),
               subtitle: const Text('View and update your daily schedule'),
               onTap: () => onNavigate(2),
-            )),
+            ))),
             if (dataset != null)
               Card(child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -391,6 +421,28 @@ class OverviewPage extends StatelessWidget {
       },
     );
   }
+}
+
+class AnimatedReveal extends StatelessWidget {
+  const AnimatedReveal({required this.index, required this.child, super.key});
+
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        duration: Duration(milliseconds: 420 + (index * 70)),
+        curve: Curves.easeOutCubic,
+        tween: Tween(begin: 0, end: 1),
+        builder: (context, value, child) => Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - value)),
+            child: child,
+          ),
+        ),
+        child: child,
+      );
 }
 
 class MetricCard extends StatelessWidget {
