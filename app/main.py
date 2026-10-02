@@ -5,13 +5,16 @@ import json
 import os
 import re
 import secrets
+import socket
 import sqlite3
+import urllib.request
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -96,6 +99,45 @@ def initialize_database() -> None:
                 average_bmi REAL NOT NULL,
                 imported_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS patients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                patient_id TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                age INTEGER NOT NULL,
+                gender TEXT NOT NULL DEFAULT '',
+                phone TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                blood_group TEXT NOT NULL DEFAULT '',
+                address TEXT NOT NULL DEFAULT '',
+                emergency_contact TEXT NOT NULL DEFAULT '',
+                chronic_conditions TEXT NOT NULL DEFAULT '[]',
+                allergies TEXT NOT NULL DEFAULT '[]',
+                current_medications TEXT NOT NULL DEFAULT '[]',
+                notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS patient_visits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                visit_date TEXT NOT NULL,
+                chief_complaint TEXT NOT NULL DEFAULT '',
+                diagnosis TEXT NOT NULL DEFAULT '',
+                systolic_bp INTEGER,
+                diastolic_bp INTEGER,
+                fasting_glucose REAL,
+                heart_rate INTEGER,
+                temperature REAL,
+                weight_kg REAL,
+                prescriptions TEXT NOT NULL DEFAULT '[]',
+                clinical_notes TEXT NOT NULL DEFAULT '',
+                next_followup TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_patients_user ON patients(user_id);
+            CREATE INDEX IF NOT EXISTS idx_visits_patient ON patient_visits(patient_id);
             """
         )
         profile_columns = {row["name"] for row in connection.execute("PRAGMA table_info(profiles)")}
@@ -119,9 +161,27 @@ def profile_dict(row: sqlite3.Row | None) -> dict | None:
     if row is None:
         return None
     profile = dict(row)
-    profile["conditions"] = json.loads(profile.pop("conditions"))
-    profile["medications"] = json.loads(profile.pop("medications"))
+    profile["conditions"] = json.loads(profile.pop("conditions", "[]"))
+    profile["medications"] = json.loads(profile.pop("medications", "[]"))
     return profile
+
+
+def patient_dict(row: sqlite3.Row | None) -> dict | None:
+    if row is None:
+        return None
+    patient = dict(row)
+    patient["chronic_conditions"] = json.loads(patient.pop("chronic_conditions", "[]"))
+    patient["allergies"] = json.loads(patient.pop("allergies", "[]"))
+    patient["current_medications"] = json.loads(patient.pop("current_medications", "[]"))
+    return patient
+
+
+def visit_dict(row: sqlite3.Row | None) -> dict | None:
+    if row is None:
+        return None
+    visit = dict(row)
+    visit["prescriptions"] = json.loads(visit.pop("prescriptions", "[]"))
+    return visit
 
 
 def create_access_token(connection: sqlite3.Connection, user_id: int) -> str:
@@ -141,7 +201,7 @@ class AccountInput(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     age: int | None = Field(default=None, ge=1, le=120)
     gender: str = Field(default="", max_length=40)
-    blood_type: str = Field(default="", max_length=3)
+    blood_type: str = Field(default="", max_length=10)
     height_cm: float | None = Field(default=None, gt=40, le=260)
     weight_kg: float | None = Field(default=None, gt=2, le=400)
     location: str = Field(default="", max_length=120)
@@ -154,11 +214,17 @@ class LoginInput(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class GoogleAuthInput(BaseModel):
+    id_token: str | None = None
+    email: str | None = None
+    name: str | None = None
+
+
 class ProfileInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     age: int | None = Field(default=None, ge=1, le=120)
     gender: str = Field(default="", max_length=40)
-    blood_type: str = Field(default="", max_length=3)
+    blood_type: str = Field(default="", max_length=10)
     height_cm: float | None = Field(default=None, gt=40, le=260)
     weight_kg: float | None = Field(default=None, gt=2, le=400)
     location: str = Field(default="", max_length=120)
@@ -179,6 +245,37 @@ class ReminderInput(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     scheduled_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     instruction: str = Field(default="", max_length=120)
+
+
+class PatientInput(BaseModel):
+    patient_id: str | None = Field(default=None, max_length=50)
+    name: str = Field(min_length=1, max_length=120)
+    age: int = Field(ge=0, le=150)
+    gender: str = Field(default="", max_length=40)
+    phone: str = Field(default="", max_length=30)
+    email: str = Field(default="", max_length=254)
+    blood_group: str = Field(default="", max_length=10)
+    address: str = Field(default="", max_length=255)
+    emergency_contact: str = Field(default="", max_length=100)
+    chronic_conditions: list[str] = Field(default_factory=list, max_length=50)
+    allergies: list[str] = Field(default_factory=list, max_length=50)
+    current_medications: list[str] = Field(default_factory=list, max_length=50)
+    notes: str = Field(default="", max_length=1500)
+
+
+class VisitInput(BaseModel):
+    visit_date: str = Field(default="", max_length=30)
+    chief_complaint: str = Field(default="", max_length=255)
+    diagnosis: str = Field(default="", max_length=255)
+    systolic_bp: int | None = Field(default=None, ge=30, le=350)
+    diastolic_bp: int | None = Field(default=None, ge=20, le=250)
+    fasting_glucose: float | None = Field(default=None, ge=10, le=1200)
+    heart_rate: int | None = Field(default=None, ge=20, le=300)
+    temperature: float | None = Field(default=None, ge=25.0, le=50.0)
+    weight_kg: float | None = Field(default=None, ge=1.0, le=500.0)
+    prescriptions: list[str] = Field(default_factory=list, max_length=50)
+    clinical_notes: str = Field(default="", max_length=2000)
+    next_followup: str | None = Field(default=None, max_length=30)
 
 
 def authenticated_user(authorization: Annotated[str | None, Header()] = None) -> int:
@@ -206,7 +303,16 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Beluga Health", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Beluga Health", version="0.2.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -227,7 +333,25 @@ def service_worker() -> FileResponse:
 
 @app.get("/api/health")
 def health_check() -> dict[str, str]:
-    return {"status": "ok", "storage": "local SQLite"}
+    return {"status": "ok", "storage": "local SQLite", "version": "0.2.0"}
+
+
+@app.get("/api/system/network-info")
+def get_network_info() -> dict:
+    local_ips = []
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if not ip.startswith("127."):
+                local_ips.append(ip)
+    except Exception:
+        pass
+    return {
+        "hostname": socket.gethostname(),
+        "local_ips": local_ips,
+        "suggested_urls": [f"http://{ip}:8000/api" for ip in local_ips],
+        "instructions": "Use any of these suggested URLs in the APK Server Settings when on the same Wi-Fi, or use your public tunnel URL (Cloudflare Tunnel / ngrok).",
+    }
 
 
 @app.post("/api/register")
@@ -255,7 +379,15 @@ def register(payload: AccountInput) -> dict:
         if "users.email" in str(error):
             raise HTTPException(status_code=409, detail="An account already exists for this email.") from error
         raise
-    return {"access_token": token, "user": {"id": user_id, "name": payload.name.strip(), "email": email}, "profile": {"age": payload.age, "gender": payload.gender, "blood_type": payload.blood_type, "height_cm": payload.height_cm, "weight_kg": payload.weight_kg, "bmi": bmi, "location": payload.location.strip(), "conditions": payload.conditions, "medications": payload.medications}}
+    return {
+        "access_token": token,
+        "user": {"id": user_id, "name": payload.name.strip(), "email": email},
+        "profile": {
+            "age": payload.age, "gender": payload.gender, "blood_type": payload.blood_type,
+            "height_cm": payload.height_cm, "weight_kg": payload.weight_kg, "bmi": bmi,
+            "location": payload.location.strip(), "conditions": payload.conditions, "medications": payload.medications
+        },
+    }
 
 
 @app.post("/api/login")
@@ -271,6 +403,55 @@ def login(payload: LoginInput) -> dict:
         token = create_access_token(connection, int(user["id"]))
         profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user["id"],)).fetchone()
     return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}, "profile": profile_dict(profile)}
+
+
+@app.post("/api/auth/google")
+def google_auth(payload: GoogleAuthInput) -> dict:
+    email = None
+    name = None
+    if payload.id_token:
+        try:
+            url = f"https://oauth2.googleapis.com/tokeninfo?id_token={payload.id_token}"
+            with urllib.request.urlopen(url, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                email = data.get("email")
+                name = data.get("name") or (email.split("@")[0] if email else "")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid Google ID token.")
+    elif payload.email:
+        email = payload.email.strip().lower()
+        name = payload.name.strip() if payload.name else email.split("@")[0]
+
+    if not email or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        raise HTTPException(status_code=422, detail="Valid Gmail or email address is required.")
+
+    now = utc_now().isoformat()
+    with connect_db() as connection:
+        user = connection.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        if user is None:
+            dummy_hash, salt = hash_password(secrets.token_urlsafe(24))
+            display_name = name or email.split("@")[0]
+            cursor = connection.execute(
+                "INSERT INTO users (name, email, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, ?)",
+                (display_name, email, dummy_hash, salt, now),
+            )
+            user_id = int(cursor.lastrowid)
+            connection.execute(
+                "INSERT INTO profiles (user_id, updated_at) VALUES (?, ?)",
+                (user_id, now),
+            )
+        else:
+            user_id = int(user["id"])
+            display_name = user["name"]
+
+        token = create_access_token(connection, user_id)
+        profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,)).fetchone()
+
+    return {
+        "access_token": token,
+        "user": {"id": user_id, "name": display_name, "email": email},
+        "profile": profile_dict(profile),
+    }
 
 
 @app.post("/api/logout", status_code=204)
@@ -332,6 +513,7 @@ def dashboard(user_id: CurrentUser) -> dict:
                FROM reminders r WHERE r.user_id = ? AND r.active = 1 ORDER BY r.scheduled_time""",
             (today, user_id),
         ).fetchall()
+        patients_count = connection.execute("SELECT COUNT(*) AS total FROM patients WHERE user_id = ?", (user_id,)).fetchone()["total"]
         dataset = connection.execute("SELECT * FROM dataset_summary WHERE id = 1").fetchone()
     latest = dict(measurements[0]) if measurements else None
     flags = []
@@ -343,9 +525,278 @@ def dashboard(user_id: CurrentUser) -> dict:
     return {
         "name": user["name"], "profile": profile_dict(profile), "latest_measurement": latest,
         "measurements": [dict(row) for row in measurements], "reminders": [dict(row) for row in reminders],
-        "dataset": dict(dataset) if dataset else None, "reading_notes": flags,
+        "patients_count": patients_count, "dataset": dict(dataset) if dataset else None, "reading_notes": flags,
     }
 
+
+# ==========================================
+# PATIENT MANAGEMENT ENDPOINTS
+# ==========================================
+
+@app.get("/api/patients")
+def list_patients(user_id: CurrentUser, q: str | None = Query(default=None)) -> list[dict]:
+    with connect_db() as connection:
+        if q and q.strip():
+            query_str = f"%{q.strip().lower()}%"
+            rows = connection.execute(
+                """
+                SELECT p.*,
+                       COUNT(v.id) AS visit_count,
+                       MAX(v.visit_date) AS last_visit_date
+                FROM patients p
+                LEFT JOIN patient_visits v ON v.patient_id = p.id
+                WHERE p.user_id = ?
+                  AND (
+                    LOWER(p.name) LIKE ?
+                    OR LOWER(p.patient_id) LIKE ?
+                    OR LOWER(p.phone) LIKE ?
+                    OR LOWER(p.chronic_conditions) LIKE ?
+                  )
+                GROUP BY p.id
+                ORDER BY p.updated_at DESC
+                """,
+                (user_id, query_str, query_str, query_str, query_str),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT p.*,
+                       COUNT(v.id) AS visit_count,
+                       MAX(v.visit_date) AS last_visit_date
+                FROM patients p
+                LEFT JOIN patient_visits v ON v.patient_id = p.id
+                WHERE p.user_id = ?
+                GROUP BY p.id
+                ORDER BY p.updated_at DESC
+                """,
+                (user_id,),
+            ).fetchall()
+
+    result = []
+    for row in rows:
+        p = patient_dict(row)
+        p["visit_count"] = row["visit_count"]
+        p["last_visit_date"] = row["last_visit_date"]
+        result.append(p)
+    return result
+
+
+@app.post("/api/patients", status_code=201)
+def create_patient(payload: PatientInput, user_id: CurrentUser) -> dict:
+    now = utc_now().isoformat()
+    with connect_db() as connection:
+        pid = payload.patient_id.strip() if payload.patient_id and payload.patient_id.strip() else None
+        if not pid:
+            count = connection.execute("SELECT COUNT(*) AS total FROM patients").fetchone()["total"]
+            candidate_id = f"PAT-{1001 + count}"
+            while connection.execute("SELECT id FROM patients WHERE patient_id = ?", (candidate_id,)).fetchone():
+                count += 1
+                candidate_id = f"PAT-{1001 + count}"
+            pid = candidate_id
+
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO patients (
+                    user_id, patient_id, name, age, gender, phone, email, blood_group,
+                    address, emergency_contact, chronic_conditions, allergies,
+                    current_medications, notes, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id, pid, payload.name.strip(), payload.age, payload.gender.strip(),
+                    payload.phone.strip(), payload.email.strip().lower(), payload.blood_group.strip(),
+                    payload.address.strip(), payload.emergency_contact.strip(),
+                    json.dumps(payload.chronic_conditions), json.dumps(payload.allergies),
+                    json.dumps(payload.current_medications), payload.notes.strip(), now, now,
+                ),
+            )
+            row = connection.execute("SELECT * FROM patients WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        except sqlite3.IntegrityError as error:
+            if "patients.patient_id" in str(error):
+                raise HTTPException(status_code=409, detail=f"A patient with ID '{pid}' already exists.") from error
+            raise
+
+    p = patient_dict(row)
+    p["visit_count"] = 0
+    p["last_visit_date"] = None
+    p["visits"] = []
+    return p
+
+
+@app.get("/api/patients/{patient_id}")
+def get_patient(patient_id: str, user_id: CurrentUser) -> dict:
+    with connect_db() as connection:
+        row = connection.execute(
+            "SELECT * FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
+            (patient_id, patient_id, user_id),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Patient not found.")
+        visits = connection.execute(
+            "SELECT * FROM patient_visits WHERE patient_id = ? ORDER BY visit_date DESC, id DESC",
+            (row["id"],),
+        ).fetchall()
+
+    patient = patient_dict(row)
+    patient["visits"] = [visit_dict(v) for v in visits]
+    patient["visit_count"] = len(visits)
+    patient["last_visit_date"] = visits[0]["visit_date"] if visits else None
+    return patient
+
+
+@app.put("/api/patients/{patient_id}")
+def update_patient(patient_id: str, payload: PatientInput, user_id: CurrentUser) -> dict:
+    now = utc_now().isoformat()
+    with connect_db() as connection:
+        existing = connection.execute(
+            "SELECT id, patient_id FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
+            (patient_id, patient_id, user_id),
+        ).fetchone()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Patient not found.")
+
+        target_pid = payload.patient_id.strip() if payload.patient_id and payload.patient_id.strip() else existing["patient_id"]
+        try:
+            connection.execute(
+                """
+                UPDATE patients SET
+                    patient_id = ?, name = ?, age = ?, gender = ?, phone = ?, email = ?,
+                    blood_group = ?, address = ?, emergency_contact = ?, chronic_conditions = ?,
+                    allergies = ?, current_medications = ?, notes = ?, updated_at = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (
+                    target_pid, payload.name.strip(), payload.age, payload.gender.strip(),
+                    payload.phone.strip(), payload.email.strip().lower(), payload.blood_group.strip(),
+                    payload.address.strip(), payload.emergency_contact.strip(),
+                    json.dumps(payload.chronic_conditions), json.dumps(payload.allergies),
+                    json.dumps(payload.current_medications), payload.notes.strip(), now,
+                    existing["id"], user_id,
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            if "patients.patient_id" in str(error):
+                raise HTTPException(status_code=409, detail=f"A patient with ID '{target_pid}' already exists.") from error
+            raise
+
+        row = connection.execute("SELECT * FROM patients WHERE id = ?", (existing["id"],)).fetchone()
+        visits = connection.execute(
+            "SELECT * FROM patient_visits WHERE patient_id = ? ORDER BY visit_date DESC, id DESC",
+            (existing["id"],),
+        ).fetchall()
+
+    p = patient_dict(row)
+    p["visits"] = [visit_dict(v) for v in visits]
+    p["visit_count"] = len(visits)
+    p["last_visit_date"] = visits[0]["visit_date"] if visits else None
+    return p
+
+
+@app.delete("/api/patients/{patient_id}", status_code=204)
+def delete_patient(patient_id: str, user_id: CurrentUser) -> None:
+    with connect_db() as connection:
+        result = connection.execute(
+            "DELETE FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
+            (patient_id, patient_id, user_id),
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Patient not found.")
+
+
+@app.post("/api/patients/{patient_id}/visits", status_code=201)
+def add_patient_visit(patient_id: str, payload: VisitInput, user_id: CurrentUser) -> dict:
+    now = utc_now().isoformat()
+    visit_date = payload.visit_date.strip() if payload.visit_date and payload.visit_date.strip() else date.today().isoformat()
+    with connect_db() as connection:
+        patient = connection.execute(
+            "SELECT id FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
+            (patient_id, patient_id, user_id),
+        ).fetchone()
+        if patient is None:
+            raise HTTPException(status_code=404, detail="Patient not found.")
+
+        cursor = connection.execute(
+            """
+            INSERT INTO patient_visits (
+                patient_id, user_id, visit_date, chief_complaint, diagnosis,
+                systolic_bp, diastolic_bp, fasting_glucose, heart_rate,
+                temperature, weight_kg, prescriptions, clinical_notes,
+                next_followup, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                patient["id"], user_id, visit_date, payload.chief_complaint.strip(),
+                payload.diagnosis.strip(), payload.systolic_bp, payload.diastolic_bp,
+                payload.fasting_glucose, payload.heart_rate, payload.temperature,
+                payload.weight_kg, json.dumps(payload.prescriptions),
+                payload.clinical_notes.strip(), payload.next_followup, now,
+            ),
+        )
+        connection.execute("UPDATE patients SET updated_at = ? WHERE id = ?", (now, patient["id"]))
+        row = connection.execute("SELECT * FROM patient_visits WHERE id = ?", (cursor.lastrowid,)).fetchone()
+
+    return visit_dict(row)
+
+
+@app.put("/api/patients/{patient_id}/visits/{visit_id}")
+def update_patient_visit(patient_id: str, visit_id: int, payload: VisitInput, user_id: CurrentUser) -> dict:
+    visit_date = payload.visit_date.strip() if payload.visit_date and payload.visit_date.strip() else date.today().isoformat()
+    with connect_db() as connection:
+        patient = connection.execute(
+            "SELECT id FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
+            (patient_id, patient_id, user_id),
+        ).fetchone()
+        if patient is None:
+            raise HTTPException(status_code=404, detail="Patient not found.")
+
+        result = connection.execute(
+            """
+            UPDATE patient_visits SET
+                visit_date = ?, chief_complaint = ?, diagnosis = ?,
+                systolic_bp = ?, diastolic_bp = ?, fasting_glucose = ?,
+                heart_rate = ?, temperature = ?, weight_kg = ?,
+                prescriptions = ?, clinical_notes = ?, next_followup = ?
+            WHERE id = ? AND patient_id = ? AND user_id = ?
+            """,
+            (
+                visit_date, payload.chief_complaint.strip(), payload.diagnosis.strip(),
+                payload.systolic_bp, payload.diastolic_bp, payload.fasting_glucose,
+                payload.heart_rate, payload.temperature, payload.weight_kg,
+                json.dumps(payload.prescriptions), payload.clinical_notes.strip(),
+                payload.next_followup, visit_id, patient["id"], user_id,
+            ),
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Visit record not found.")
+
+        connection.execute("UPDATE patients SET updated_at = ? WHERE id = ?", (utc_now().isoformat(), patient["id"]))
+        row = connection.execute("SELECT * FROM patient_visits WHERE id = ?", (visit_id,)).fetchone()
+
+    return visit_dict(row)
+
+
+@app.delete("/api/patients/{patient_id}/visits/{visit_id}", status_code=204)
+def delete_patient_visit(patient_id: str, visit_id: int, user_id: CurrentUser) -> None:
+    with connect_db() as connection:
+        patient = connection.execute(
+            "SELECT id FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
+            (patient_id, patient_id, user_id),
+        ).fetchone()
+        if patient is None:
+            raise HTTPException(status_code=404, detail="Patient not found.")
+
+        result = connection.execute(
+            "DELETE FROM patient_visits WHERE id = ? AND patient_id = ? AND user_id = ?",
+            (visit_id, patient["id"], user_id),
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Visit record not found.")
+
+
+# ==========================================
+# REMINDERS ENDPOINTS
+# ==========================================
 
 @app.get("/api/reminders")
 def list_reminders(user_id: CurrentUser) -> list[dict]:
