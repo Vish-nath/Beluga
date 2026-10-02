@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "web"
 DATABASE_PATH = Path(os.environ.get("HEALTHBOT_DB", ROOT / "data" / "healthbot.sqlite3"))
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 PASSWORD_ROUNDS = 310_000
 TOKEN_LIFETIME = timedelta(days=14)
 
@@ -45,7 +46,8 @@ def initialize_database() -> None:
                 email TEXT NOT NULL UNIQUE COLLATE NOCASE,
                 password_hash TEXT NOT NULL,
                 password_salt TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                is_admin INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS profiles (
                 user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -136,10 +138,20 @@ def initialize_database() -> None:
                 next_followup TEXT,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS admin_access_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                target_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                action TEXT NOT NULL,
+                accessed_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_patients_user ON patients(user_id);
             CREATE INDEX IF NOT EXISTS idx_visits_patient ON patient_visits(patient_id);
             """
         )
+        user_columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)")}
+        if "is_admin" not in user_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
         profile_columns = {row["name"] for row in connection.execute("PRAGMA table_info(profiles)")}
         if "medications" not in profile_columns:
             connection.execute("ALTER TABLE profiles ADD COLUMN medications TEXT NOT NULL DEFAULT '[]'")
@@ -297,6 +309,17 @@ def authenticated_user(authorization: Annotated[str | None, Header()] = None) ->
 CurrentUser = Annotated[int, Depends(authenticated_user)]
 
 
+def authenticated_admin(user_id: CurrentUser) -> int:
+    with connect_db() as connection:
+        user = connection.execute("SELECT is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
+    if user is None or not user["is_admin"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required.")
+    return user_id
+
+
+CurrentAdmin = Annotated[int, Depends(authenticated_admin)]
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
@@ -381,7 +404,7 @@ def register(payload: AccountInput) -> dict:
         raise
     return {
         "access_token": token,
-        "user": {"id": user_id, "name": payload.name.strip(), "email": email},
+        "user": {"id": user_id, "name": payload.name.strip(), "email": email, "is_admin": False},
         "profile": {
             "age": payload.age, "gender": payload.gender, "blood_type": payload.blood_type,
             "height_cm": payload.height_cm, "weight_kg": payload.weight_kg, "bmi": bmi,
@@ -402,25 +425,27 @@ def login(payload: LoginInput) -> dict:
             raise HTTPException(status_code=401, detail="Email or password is incorrect.")
         token = create_access_token(connection, int(user["id"]))
         profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user["id"],)).fetchone()
-    return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}, "profile": profile_dict(profile)}
+    return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"], "is_admin": bool(user["is_admin"])}, "profile": profile_dict(profile)}
 
 
 @app.post("/api/auth/google")
 def google_auth(payload: GoogleAuthInput) -> dict:
     email = None
     name = None
-    if payload.id_token:
-        try:
-            url = f"https://oauth2.googleapis.com/tokeninfo?id_token={payload.id_token}"
-            with urllib.request.urlopen(url, timeout=5) as response:
-                data = json.loads(response.read().decode())
-                email = data.get("email")
-                name = data.get("name") or (email.split("@")[0] if email else "")
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid Google ID token.")
-    elif payload.email:
-        email = payload.email.strip().lower()
-        name = payload.name.strip() if payload.name else email.split("@")[0]
+    if not payload.id_token:
+        raise HTTPException(status_code=401, detail="A verified Google ID token is required.")
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured on this server.")
+    try:
+        url = f"https://oauth2.googleapis.com/tokeninfo?id_token={payload.id_token}"
+        with urllib.request.urlopen(url, timeout=5) as response:
+            data = json.loads(response.read().decode())
+        if data.get("aud") != GOOGLE_CLIENT_ID or data.get("email_verified") not in (True, "true"):
+            raise ValueError("Google token audience or email verification did not match.")
+        email = data.get("email")
+        name = data.get("name") or (email.split("@")[0] if email else "")
+    except Exception as error:
+        raise HTTPException(status_code=401, detail="Invalid Google ID token.") from error
 
     if not email or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
         raise HTTPException(status_code=422, detail="Valid Gmail or email address is required.")
@@ -449,7 +474,7 @@ def google_auth(payload: GoogleAuthInput) -> dict:
 
     return {
         "access_token": token,
-        "user": {"id": user_id, "name": display_name, "email": email},
+        "user": {"id": user_id, "name": display_name, "email": email, "is_admin": bool(user["is_admin"]) if user else False},
         "profile": profile_dict(profile),
     }
 
@@ -464,9 +489,11 @@ def logout(user_id: CurrentUser, authorization: Annotated[str, Header()]) -> Non
 @app.get("/api/me")
 def get_me(user_id: CurrentUser) -> dict:
     with connect_db() as connection:
-        user = connection.execute("SELECT id, name, email FROM users WHERE id = ?", (user_id,)).fetchone()
+        user = connection.execute("SELECT id, name, email, is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
         profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,)).fetchone()
-    return {"user": dict(user), "profile": profile_dict(profile)}
+    result = dict(user)
+    result["is_admin"] = bool(result["is_admin"])
+    return {"user": result, "profile": profile_dict(profile)}
 
 
 @app.put("/api/profile")
@@ -526,6 +553,59 @@ def dashboard(user_id: CurrentUser) -> dict:
         "name": user["name"], "profile": profile_dict(profile), "latest_measurement": latest,
         "measurements": [dict(row) for row in measurements], "reminders": [dict(row) for row in reminders],
         "patients_count": patients_count, "dataset": dict(dataset) if dataset else None, "reading_notes": flags,
+    }
+
+
+@app.get("/api/admin/users")
+def admin_list_users(admin_id: CurrentAdmin) -> list[dict]:
+    with connect_db() as connection:
+        connection.execute(
+            "INSERT INTO admin_access_log (admin_user_id, action, accessed_at) VALUES (?, ?, ?)",
+            (admin_id, "list_users", utc_now().isoformat()),
+        )
+        users = connection.execute(
+            "SELECT id, name, email, created_at FROM users ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(user) for user in users]
+
+
+@app.get("/api/admin/users/{target_user_id}")
+def admin_get_user(target_user_id: int, admin_id: CurrentAdmin) -> dict:
+    with connect_db() as connection:
+        user = connection.execute(
+            "SELECT id, name, email, created_at FROM users WHERE id = ?", (target_user_id,)
+        ).fetchone()
+        if user is None:
+            raise HTTPException(status_code=404, detail="Account not found.")
+        profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (target_user_id,)).fetchone()
+        measurements = connection.execute(
+            "SELECT * FROM measurements WHERE user_id = ? ORDER BY recorded_at DESC", (target_user_id,)
+        ).fetchall()
+        reminders = connection.execute(
+            "SELECT * FROM reminders WHERE user_id = ? ORDER BY scheduled_time", (target_user_id,)
+        ).fetchall()
+        patients = connection.execute(
+            "SELECT * FROM patients WHERE user_id = ? ORDER BY updated_at DESC", (target_user_id,)
+        ).fetchall()
+        patient_records = []
+        for patient_row in patients:
+            patient = patient_dict(patient_row)
+            visits = connection.execute(
+                "SELECT * FROM patient_visits WHERE patient_id = ? AND user_id = ? ORDER BY visit_date DESC",
+                (patient_row["id"], target_user_id),
+            ).fetchall()
+            patient["visits"] = [visit_dict(visit) for visit in visits]
+            patient_records.append(patient)
+        connection.execute(
+            "INSERT INTO admin_access_log (admin_user_id, target_user_id, action, accessed_at) VALUES (?, ?, ?, ?)",
+            (admin_id, target_user_id, "view_user_records", utc_now().isoformat()),
+        )
+    return {
+        "user": dict(user),
+        "profile": profile_dict(profile),
+        "measurements": [dict(row) for row in measurements],
+        "reminders": [dict(row) for row in reminders],
+        "patients": patient_records,
     }
 
 

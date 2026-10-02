@@ -22,7 +22,8 @@ def main() -> None:
     print("=" * 68)
     print("           BELUGA HEALTH - LOCAL SERVER & DATABASE")
     print("=" * 68)
-    print("\nStarting Beluga API server on all network interfaces (0.0.0.0:8000)...")
+    print("\nStarting the development API server on all network interfaces (0.0.0.0:8000)...")
+    print("Use this only for local testing on trusted devices; do not publish it publicly.")
 
     local_ips = get_local_ips()
     print("\n--- HOW TO CONNECT YOUR ANDROID APK ---")
@@ -35,12 +36,9 @@ def main() -> None:
     else:
         print("1. [Same Wi-Fi Network]: Connect your PC and phone to Wi-Fi and use your PC's IP address.")
 
-    print("\n2. [Anywhere on the Internet / Cellular Data] (Recommended for public APKs):")
-    print("   Run a free secure tunnel in another terminal:")
-    print("   - Using Cloudflare Tunnel:  cloudflared tunnel --url http://localhost:8000")
-    print("   - Using ngrok:              ngrok http 8000")
-    print("   Then enter the generated HTTPS URL in the APK, e.g.:")
-    print("   https://xxxx.trycloudflare.com/api  or  https://xxxx.ngrok-free.app/api")
+    print("\n2. [Public Internet Access]:")
+    print("   This prototype is not ready for public users or real health data.")
+    print("   Do not expose it with a tunnel or router port forwarding before a security review.")
 
     print("\n3. [Android Emulator on this PC]:")
     print("   Default URL: http://10.0.2.2:8000/api")
