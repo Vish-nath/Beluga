@@ -75,21 +75,14 @@ function authView(mode = "login") {
           <p>Local database & server for patient record tracking, clinical checkups, and future reference.</p>
         </div>
         <div class="pulse-visual"><span>01</span><div class="pulse-line">${icons.pulse}</div><span>24</span></div>
-        <span class="art-caption">SECURE LOCAL DATABASE & SERVER</span>
+        <span class="art-caption">LAPTOP-HOSTED SERVER & DATABASE</span>
       </div>
       <div class="auth-panel">
         <div class="auth-mobile-brand brand">${icons.pulse}<span>beluga<span class="brand-light"> health</span></span></div>
         <div class="auth-form-wrap">
           <span class="eyebrow">${register ? "NEW CLINICIAN / USER" : "WELCOME BACK"}</span>
           <h2>${register ? "Create your account" : "Sign in to Beluga"}</h2>
-          <p class="muted">${register ? "Use your Gmail ID and password to access the database." : "Sign in with your Gmail ID & password."}</p>
-          
-          <button type="button" class="button button-google" id="google-auth-btn">
-            <svg viewBox="0 0 24 24" style="width:18px;height:18px"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/><path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/></svg>
-            <span>Continue with Google</span>
-          </button>
-          
-          <div class="auth-divider"><span>or sign in with password</span></div>
+          <p class="muted">${register ? "Create an account with your email and password." : "Sign in with your email and password."}</p>
 
           <form id="auth-form" class="form-stack">
             ${register ? field("Full name", "name", "text", "", "autocomplete='name' required") : ""}
@@ -98,27 +91,13 @@ function authView(mode = "login") {
             <button class="button button-primary button-wide" type="submit">${register ? "Create account" : "Sign in"}${icons.arrow}</button>
           </form>
           <p class="auth-switch">${register ? "Already have an account?" : "New to Beluga?"} <button class="text-button" id="auth-toggle">${register ? "Sign in" : "Create an account"}</button></p>
-          <p class="privacy-note">All data is kept in your local database for patient record tracking and future reference.</p>
+          <p class="privacy-note">The app administrator can view account health records. This prototype is not for real health data.</p>
         </div>
         <span class="auth-foot">BELUGA HEALTH · LOCAL SERVER & DATABASE</span>
       </div>
     </section>`;
 
   document.querySelector("#auth-toggle").addEventListener("click", () => authView(register ? "login" : "register"));
-  
-  document.querySelector("#google-auth-btn").addEventListener("click", async () => {
-    const email = prompt("Enter your Gmail address:");
-    if (!email) return;
-    try {
-      const result = await request("/auth/google", {
-        method: "POST",
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      setSession(result);
-    } catch (err) {
-      showToast(err.message, true);
-    }
-  });
 
   document.querySelector("#auth-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -706,7 +685,7 @@ async function renderProfile() {
       <article class="section-panel profile-panel"><div class="section-title"><div><span class="eyebrow">ABOUT YOU</span><h2>Account details</h2></div><span class="profile-badge">${escapeHtml(currentUser.email)}</span></div>
         <form id="profile-form" class="form-stack"><div class="form-grid">${field("Full name", "name", "text", currentUser.name, "required")}${field("Gmail / Email address", "email", "email", currentUser.email, "disabled")}</div><div class="form-grid">${field("Age", "age", "number", profile.age ?? "")}<label class="field"><span>Gender</span><select name="gender"><option value="">Prefer not to say</option>${["Female", "Male", "Non-binary", "Self-describe"].map((v) => `<option ${profile.gender === v ? "selected" : ""}>${v}</option>`).join("")}</select></label></div><div class="form-grid"><label class="field"><span>Blood type</span><select name="blood_type"><option value="">Not provided</option>${["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((v) => `<option value="${v}" ${profile.blood_type === v ? "selected" : ""}>${v}</option>`).join("")}</select></label><div></div></div><div class="form-grid">${field("Height (cm)", "height_cm", "number", profile.height_cm ?? "")}${field("Weight (kg)", "weight_kg", "number", profile.weight_kg ?? "")}</div>${field("Location", "location", "text", profile.location ?? "")}<button class="button button-primary" type="submit">Save profile ${icons.arrow}</button></form>
       </article>
-      <aside class="profile-aside"><div class="profile-aside-mark">${icons.user}</div><span class="eyebrow">SERVER HOST</span><h2>Database Running Locally</h2><p>Your database is stored securely in SQLite at <code>data/healthbot.sqlite3</code>.</p><div class="privacy-chip"><span></span>Local Database Host</div></aside>
+      <aside class="profile-aside"><div class="profile-aside-mark">${icons.user}</div><span class="eyebrow">SERVER HOST</span><h2>Database Running Locally</h2><p>Your records are stored in SQLite on the host laptop. The app administrator can view account data.</p><div class="privacy-chip"><span></span>Local Database Host</div></aside>
     </section>
   `);
   document.querySelector("#profile-form").addEventListener("submit", async (event) => {

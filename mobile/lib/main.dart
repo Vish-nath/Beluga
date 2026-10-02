@@ -86,16 +86,6 @@ class HealthApi {
         'password': password,
       }));
 
-  Future<Map<String, dynamic>> googleAuth({
-    String? idToken,
-    String? email,
-    String? name,
-  }) async =>
-      Map<String, dynamic>.from(await request('/auth/google', method: 'POST', body: {
-        if (idToken != null) 'id_token': idToken,
-        if (email != null) 'email': email,
-        if (name != null) 'name': name,
-      }));
 }
 
 void main() => runApp(const BelugaApp());
@@ -420,93 +410,6 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  Future<void> _signInWithGoogleDialog() async {
-    final googleEmail = TextEditingController(text: _email.text);
-    final googleName = TextEditingController(text: _name.text);
-    final formKey = GlobalKey<FormState>();
-
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.account_circle, color: Color(0xff4285F4)),
-            SizedBox(width: 8),
-            Text('Sign in with Google'),
-          ],
-        ),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Enter your Gmail ID to sign in or create your account instantly:',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: googleEmail,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Gmail address',
-                  hintText: 'username@gmail.com',
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) {
-                    return 'Enter your Gmail ID.';
-                  }
-                  if (!val.contains('@')) return 'Enter a valid email address.';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: googleName,
-                decoration: const InputDecoration(
-                  labelText: 'Full name (optional)',
-                  hintText: 'e.g. John Doe',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) Navigator.pop(context, true);
-            },
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-
-    if (accepted != true) return;
-
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final api = HealthApi(null, baseUrl: widget.baseUrl);
-      final result = await api.googleAuth(
-        email: googleEmail.text.trim(),
-        name: googleName.text.trim().isNotEmpty ? googleName.text.trim() : null,
-      );
-      widget.onAuthenticated(result);
-    } catch (error) {
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   void _openServerConfig() {
     showDialog(
       context: context,
@@ -561,8 +464,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         const SizedBox(height: 4),
                         Text(
                           _register
-                              ? 'Create your account with your Gmail ID'
-                              : 'Sign in with your Gmail ID & password',
+                              ? 'Create your account with email and password'
+                              : 'Sign in with email and password',
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: Colors.black54, fontSize: 13),
                         ),
@@ -581,12 +484,18 @@ class _AuthScreenState extends State<AuthScreen> {
                           controller: _email,
                           keyboardType: TextInputType.emailAddress,
                           decoration: const InputDecoration(
-                            labelText: 'Gmail / Email ID',
+                            labelText: 'Email address',
                             hintText: 'you@gmail.com',
                           ),
                           validator: (value) => value == null || !value.contains('@')
-                              ? 'Enter a valid Gmail or email address.'
+                              ? 'Enter a valid email address.'
                               : null,
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'The app administrator can view account health records. Do not enter real health data in this prototype.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.black54, fontSize: 11),
                         ),
                         const SizedBox(height: 12),
                         TextFormField(
@@ -627,45 +536,6 @@ class _AuthScreenState extends State<AuthScreen> {
                                   ),
                                 )
                               : Text(_register ? 'Create account' : 'Sign in'),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            const Expanded(child: Divider()),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 10),
-                              child: Text(
-                                'OR',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            const Expanded(child: Divider()),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        OutlinedButton.icon(
-                          onPressed: _busy ? null : _signInWithGoogleDialog,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            side: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          icon: Image.network(
-                            'https://www.gstatic.com/images/branding/product/2x/googleg_48dp.png',
-                            height: 20,
-                            errorBuilder: (_, __, ___) =>
-                                const Icon(Icons.account_circle, color: Color(0xff4285F4)),
-                          ),
-                          label: const Text(
-                            'Continue with Google',
-                            style: TextStyle(
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
                         ),
                         const SizedBox(height: 12),
                         TextButton(
@@ -748,13 +618,22 @@ class _HealthHomeState extends State<HealthHome> {
   int _selected = 0;
   late final HealthApi _api = HealthApi(widget.token, baseUrl: widget.baseUrl);
 
-  final _pages = const ['Patients', 'Overview', 'Health log', 'Reminders', 'Profile'];
-  final _icons = const [
+  List<String> get _pages => [
+        'Patients',
+        'Overview',
+        'Health log',
+        'Reminders',
+        'Profile',
+        if (widget.user['is_admin'] == true) 'Admin',
+      ];
+
+  List<IconData> get _icons => [
     Icons.people_alt_outlined,
     Icons.home_outlined,
     Icons.monitor_heart_outlined,
     Icons.notifications_outlined,
     Icons.person_outline,
+    if (widget.user['is_admin'] == true) Icons.admin_panel_settings_outlined,
   ];
 
   @override
@@ -769,11 +648,13 @@ class _HealthHomeState extends State<HealthHome> {
         ),
       2 => MeasurementPage(api: _api),
       3 => RemindersPage(api: _api),
-      _ => ProfilePage(
+      4 => ProfilePage(
           api: _api,
           baseUrl: widget.baseUrl,
           onUpdateBaseUrl: widget.onUpdateBaseUrl,
         ),
+      5 when widget.user['is_admin'] == true => AdminPage(api: _api),
+      _ => const SizedBox.shrink(),
     };
 
     return Scaffold(
@@ -826,6 +707,241 @@ class _HealthHomeState extends State<HealthHome> {
                   ),
               ],
             ),
+    );
+  }
+}
+
+// ==========================================
+// ADMIN ACCOUNT AND HEALTH RECORDS
+// ==========================================
+
+class AdminPage extends StatefulWidget {
+  const AdminPage({required this.api, super.key});
+  final HealthApi api;
+
+  @override
+  State<AdminPage> createState() => _AdminPageState();
+}
+
+class _AdminPageState extends State<AdminPage> {
+  late Future<dynamic> _usersFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsers();
+  }
+
+  void _loadUsers() {
+    _usersFuture = widget.api.request('/admin/users');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<dynamic>(
+      future: _usersFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Could not load accounts: ${snapshot.error}'),
+                const SizedBox(height: 8),
+                FilledButton(onPressed: () => setState(_loadUsers), child: const Text('Retry')),
+              ],
+            ),
+          );
+        }
+        final users = List<Map<String, dynamic>>.from(snapshot.data ?? []);
+        if (users.isEmpty) return const Center(child: Text('No accounts yet.'));
+        return RefreshIndicator(
+          onRefresh: () async => setState(_loadUsers),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text('Accounts', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              const Text('Selecting an account opens its private health records.'),
+              const SizedBox(height: 12),
+              for (final user in users)
+                Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+                    title: Text(user['name']?.toString() ?? 'Unnamed account'),
+                    subtitle: Text(user['email']?.toString() ?? ''),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AdminUserDetailPage(
+                          api: widget.api,
+                          userId: user['id'] as int,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class AdminUserDetailPage extends StatefulWidget {
+  const AdminUserDetailPage({
+    required this.api,
+    required this.userId,
+    super.key,
+  });
+
+  final HealthApi api;
+  final int userId;
+
+  @override
+  State<AdminUserDetailPage> createState() => _AdminUserDetailPageState();
+}
+
+class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
+  late final Future<dynamic> _detailsFuture =
+      widget.api.request('/admin/users/${widget.userId}');
+
+  Widget _recordLine(String label, Object? value) {
+    final text = value == null || value.toString().isEmpty ? 'Not provided' : value.toString();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Text('$label: $text'),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Account records')),
+      body: FutureBuilder<dynamic>(
+        future: _detailsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Could not load records: ${snapshot.error}'));
+          }
+
+          final data = Map<String, dynamic>.from(snapshot.data);
+          final user = Map<String, dynamic>.from(data['user']);
+          final profile = data['profile'] == null
+              ? <String, dynamic>{}
+              : Map<String, dynamic>.from(data['profile']);
+          final measurements = List<Map<String, dynamic>>.from(data['measurements'] ?? []);
+          final reminders = List<Map<String, dynamic>>.from(data['reminders'] ?? []);
+          final patients = List<Map<String, dynamic>>.from(data['patients'] ?? []);
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(user['name']?.toString() ?? '', style: Theme.of(context).textTheme.titleLarge),
+              Text(user['email']?.toString() ?? ''),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Profile', style: Theme.of(context).textTheme.titleMedium),
+                      _recordLine('Age', profile['age']),
+                      _recordLine('Gender', profile['gender']),
+                      _recordLine('Blood type', profile['blood_type']),
+                      _recordLine('Height (cm)', profile['height_cm']),
+                      _recordLine('Weight (kg)', profile['weight_kg']),
+                      _recordLine('BMI', profile['bmi']),
+                      _recordLine('Location', profile['location']),
+                      _recordLine('Conditions', (profile['conditions'] ?? []).join(', ')),
+                      _recordLine('Medications', (profile['medications'] ?? []).join(', ')),
+                    ],
+                  ),
+                ),
+              ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Health log (${measurements.length})', style: Theme.of(context).textTheme.titleMedium),
+                      for (final item in measurements) ...[
+                        const Divider(),
+                        _recordLine('Recorded', item['recorded_at']),
+                        _recordLine('Steps', item['steps']),
+                        _recordLine('Active minutes', item['active_minutes']),
+                        _recordLine('Sleep hours', item['sleep_hours']),
+                        _recordLine('Fasting glucose', item['fasting_glucose']),
+                        _recordLine('Blood pressure', '${item['systolic_bp'] ?? '—'} / ${item['diastolic_bp'] ?? '—'}'),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Reminders (${reminders.length})', style: Theme.of(context).textTheme.titleMedium),
+                      for (final reminder in reminders)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(reminder['title']?.toString() ?? ''),
+                          subtitle: Text('${reminder['scheduled_time'] ?? ''} · ${reminder['instruction'] ?? ''}'),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Patient records (${patients.length})', style: Theme.of(context).textTheme.titleMedium),
+                      for (final patient in patients)
+                        ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          title: Text(patient['name']?.toString() ?? ''),
+                          subtitle: Text('${patient['patient_id'] ?? ''} · ${patient['age'] ?? ''} years'),
+                          children: [
+                            _recordLine('Conditions', (patient['chronic_conditions'] ?? []).join(', ')),
+                            _recordLine('Allergies', (patient['allergies'] ?? []).join(', ')),
+                            _recordLine('Medications', (patient['current_medications'] ?? []).join(', ')),
+                            _recordLine('Notes', patient['notes']),
+                            for (final visit in List<Map<String, dynamic>>.from(patient['visits'] ?? []))
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text('Visit ${visit['visit_date'] ?? ''}'),
+                                subtitle: Text([
+                                  visit['chief_complaint'],
+                                  visit['diagnosis'],
+                                  visit['clinical_notes'],
+                                  if ((visit['prescriptions'] ?? []).isNotEmpty)
+                                    'Prescriptions: ${(visit['prescriptions'] as List).join(', ')}',
+                                ].where((value) => value != null && value.toString().isNotEmpty).join('\n')),
+                              ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

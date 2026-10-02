@@ -2,19 +2,21 @@
 
 **AI-Powered Health Monitoring & Patient Database Management System**.
 
-Beluga Health turns your local PC into a dedicated **health database and API server** with companion **Android APK** and **Web** clients. Clinicians and users can register or sign in with their **Gmail ID & password** (or Google Sign-In), store patient records in the database, modify patient data whenever required, and track complete clinical checkups, vitals, and prescriptions for **future reference**.
+Beluga Health is a health-record prototype with an Android APK, web client, FastAPI server, and SQLite database. Accounts use email and password. The administrator can view all account health records; ordinary accounts are restricted to their own records.
+
+**Do not expose this prototype to public users or enter real health data yet.** It still needs a production security review and controls such as verified account recovery, abuse protection, encrypted backups, and operational monitoring.
 
 ---
 
 ## Key Features
 
-- **Your PC as the Server & Database**:
-  - Python FastAPI server running locally on your computer with a persistent SQLite database (`data/healthbot.sqlite3`).
-  - Listen on `0.0.0.0:8000` to serve devices on your local Wi-Fi, or expose via secure tunnels (Cloudflare Tunnel or ngrok) for global mobile access.
-  - Automatic IP detection and server launcher: `python scripts/start_server.py`.
-- **Gmail ID & Password + Google Sign-In**:
-  - Create accounts or log in using any Gmail address (`@gmail.com`) and secure password (PBKDF2 salted hash).
-  - Quick Google Sign-In integration for mobile and web.
+- **Laptop server and database**:
+  - FastAPI serves the clients and API; SQLite persists data in `data/healthbot.sqlite3`.
+  - Local network testing is supported. Public internet access requires a stable HTTPS endpoint and a security review first.
+- **Account access**:
+  - Users create accounts or sign in with email and password.
+  - Server-side ownership checks keep ordinary users within their own records.
+  - The admin account can read all users' profiles, health logs, reminders, and patient records. Admin record views are logged.
 - **Patient Database Management**:
   - Add patients with custom or auto-generated clinical IDs (`PAT-1001`, `PAT-1002`, ...).
   - Modify patient demographics, contact details, emergency contacts, chronic conditions, allergies, and current medications at any time.
@@ -24,70 +26,54 @@ Beluga Health turns your local PC into a dedicated **health database and API ser
   - Chronological visit timeline for reviewing patient trends over time.
 - **Android APK with Dynamic Server Switching**:
   - Install the APK on any Android phone.
-  - Built-in **Server Settings** modal allows easily switching the API address (e.g., `http://192.168.1.X:8000/api` or `https://xxxx.trycloudflare.com/api`) and testing connectivity with one tap.
+  - Built-in **Server Settings** modal allows switching the API address and testing connectivity.
 
 ---
 
-## 1. Run Your PC as the Database & Server
+## 1. Run the Laptop Server for Local Testing
 
-1. Open PowerShell or Terminal in the project root:
-   ```powershell
-   py -m venv .venv
-   .venv\Scripts\Activate.ps1
-   py -m pip install -r requirements.txt
-   ```
+In PowerShell, from the project root:
 
-2. Start the server using the helper script:
-   ```powershell
-   py scripts/start_server.py
-   ```
-   This script:
-   - Detects your PC's local Wi-Fi / LAN IP addresses.
-   - Shows the exact URL to enter in the Android APK (e.g. `http://192.168.1.15:8000/api`).
-   - Displays copy-paste instructions for free tunnels (Cloudflare Tunnel / ngrok) so users can reach your server anywhere over cellular data / internet.
-   - Launches the FastAPI backend and creates the SQLite database in `data/healthbot.sqlite3`.
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+py -m pip install -r requirements.txt
+py -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
 
-3. Open the web interface in your browser:
-   [http://localhost:8000](http://localhost:8000)
+The database is created at `data/healthbot.sqlite3`. Open `http://127.0.0.1:8000` on the laptop. Keep this terminal running while testing.
 
 ---
 
 ## 2. Connect Mobile APK to Your PC Server
 
-### Option A: Local Wi-Fi (Same Network)
-1. Make sure your Android phone and PC are connected to the same Wi-Fi router.
-2. In the Beluga APK, on the sign-in screen, tap the **Settings icon** (or the Server badge at the bottom).
-3. Enter your PC's local IP address displayed by `scripts/start_server.py`:
-   ```
+### Same Wi-Fi
+
+1. Connect the phone and laptop to the same private Wi-Fi network.
+2. Run `ipconfig` on Windows and find the laptop's IPv4 address.
+3. In the APK's server settings, enter:
+
+   ```text
    http://192.168.X.X:8000/api
    ```
-4. Tap **Test Connection** to confirm connectivity, then tap **Save**.
-5. (If prompted by Windows, make sure Python is allowed through Windows Firewall on private networks).
 
-### Option B: Free Public Tunnel (Anywhere / Cellular Data)
-If you want users to download the APK and connect from anywhere in the world:
-1. In another terminal on your PC, start a tunnel:
-   - **Cloudflare Tunnel (Free, no account needed)**:
-     ```bash
-     cloudflared tunnel --url http://localhost:8000
-     ```
-   - **ngrok**:
-     ```bash
-     ngrok http 8000
-     ```
-2. Cloudflare or ngrok will generate an HTTPS URL (e.g., `https://random-name.trycloudflare.com`).
-3. In the APK, enter:
-   ```
-   https://random-name.trycloudflare.com/api
-   ```
-   Now any user with the APK can connect to the database running on your PC!
+4. Test the connection. If Windows Firewall prompts, allow Python on private networks only.
+
+### Public Access
+
+Do not use port forwarding or a temporary tunnel to publish this prototype. HTTPS only encrypts traffic in transit; it does not make the app production-ready. Before inviting users, complete a security review and deploy behind a stable HTTPS endpoint with account recovery, abuse protection, encrypted/off-site backups, and a reliable always-on host. A laptop also needs uninterrupted power, network access, and a fixed address. The current GitHub release workflow accepts only an HTTPS API URL.
 
 ---
 
-## 3. Account Creation & Sign In
+## 3. Account Creation and Admin Setup
 
-- **Gmail ID & Password**: Enter your Gmail address (e.g., `doctor@gmail.com`) and choose a password. Tap **Create account** (or **Sign in**).
-- **Google Sign-In**: Tap **Continue with Google** to sign in directly with your Gmail identity.
+Create your account in the app with an email address and password. To make your account the sole administrator, run this from the project root on the laptop after registering:
+
+```powershell
+py scripts/set_admin.py your-email@example.com
+```
+
+The script demotes any previous admin. Sign out and back in to refresh the admin view. Admins can read all users' health records, so grant this role only to a trusted account. Ordinary signup cannot grant admin access.
 
 ---
 
@@ -110,18 +96,28 @@ If you want users to download the APK and connect from anywhere in the world:
 ## 5. Build or Publish the Android APK
 
 ### Building locally with Flutter
+
 ```powershell
 cd mobile
 py bootstrap.py
 flutter build apk --release --dart-define=API_BASE_URL=http://YOUR-PC-IP:8000/api
 ```
+
 The compiled APK will be located at:
 `mobile/build/app/outputs/flutter-apk/app-release.apk`
 
 ### Automated Build via GitHub Actions
+
+Before building a release, configure repository settings under **Settings > Secrets and variables > Actions**:
+
+- Set the `API_BASE_URL` variable to your stable HTTPS API URL ending in `/api`.
+- Set the `ANDROID_DEBUG_KEYSTORE_BASE64` secret to a persistent Android signing keystore encoded as base64. Keep the keystore private and never commit it.
+
 Push a version tag to trigger the GitHub Actions workflow:
+
 ```sh
 git tag v1.1.0
 git push origin v1.1.0
 ```
+
 GitHub Actions will compile the Android APK and attach it to the Releases section for download.
