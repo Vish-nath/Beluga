@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import socket
 import subprocess
 import sys
@@ -19,43 +20,48 @@ def get_local_ips() -> list[str]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the Beluga API server for local development.")
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Bind address; use 127.0.0.1 when serving through a local HTTPS tunnel.",
+    )
+    parser.add_argument("--reload", action="store_true", help="Enable development auto-reload.")
+    args = parser.parse_args()
+
     print("=" * 68)
     print("           BELUGA HEALTH - LOCAL SERVER & DATABASE")
     print("=" * 68)
-    print("\nStarting the development API server on all network interfaces (0.0.0.0:8000)...")
-    print("Use this only for local testing on trusted devices; do not publish it publicly.")
+    print(f"\nStarting the API server on {args.host}:8000...")
 
-    local_ips = get_local_ips()
-    print("\n--- HOW TO CONNECT YOUR ANDROID APK ---")
-    if local_ips:
-        print("1. [Same Wi-Fi Network]:")
-        for ip in local_ips:
-            print(f"   Enter this Server URL in the APK: http://{ip}:8000/api")
-        print("   (Ensure your phone and this PC are on the same Wi-Fi network,")
-        print("    and allow Python through Windows Firewall if prompted.)")
+    if args.host in {"127.0.0.1", "localhost"}:
+        print("Keep this server bound to localhost when using a public HTTPS tunnel.")
+        print("Do not configure router port forwarding for port 8000.")
     else:
-        print("1. [Same Wi-Fi Network]: Connect your PC and phone to Wi-Fi and use your PC's IP address.")
-
-    print("\n2. [Public Internet Access]:")
-    print("   This prototype is not ready for public users or real health data.")
-    print("   Do not expose it with a tunnel or router port forwarding before a security review.")
-
-    print("\n3. [Android Emulator on this PC]:")
-    print("   Default URL: http://10.0.2.2:8000/api")
-
-    print("\n4. [Web Browser on this PC]:")
-    print("   Open: http://localhost:8000")
+        print("Use only on trusted networks; allow Python through Windows Firewall on private networks only.")
+        print("Same-Wi-Fi clients can use one of these addresses:")
+        for ip in get_local_ips():
+            print(f"   http://{ip}:8000/api")
+    print("\nAndroid emulator URL: http://10.0.2.2:8000/api")
+    print("Web browser on this PC: http://localhost:8000")
     print("=" * 68)
     print("\nServer logs:\n")
 
     root = Path(__file__).resolve().parents[1]
-    python_exe = sys.executable
+    command = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        args.host,
+        "--port",
+        "8000",
+    ]
+    if args.reload:
+        command.append("--reload")
     try:
-        subprocess.run(
-            [python_exe, "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
-            cwd=root,
-            check=True,
-        )
+        subprocess.run(command, cwd=root, check=True)
     except KeyboardInterrupt:
         print("\nBeluga Health Server stopped.")
 
