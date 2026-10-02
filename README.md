@@ -4,6 +4,8 @@
 
 Beluga Health is a health-record prototype with an Android APK, web client, FastAPI server, and SQLite database. Accounts use email and password. The administrator can view all account health records; ordinary accounts are restricted to their own records.
 
+[Download the latest Android APK](https://github.com/Vish-nath/Beluga/releases/latest/download/app-release.apk)
+
 **Do not expose this prototype to public users or enter real health data yet.** It still needs a production security review and controls such as verified account recovery, abuse protection, encrypted backups, and operational monitoring.
 
 ---
@@ -30,18 +32,24 @@ Beluga Health is a health-record prototype with an Android APK, web client, Fast
 
 ---
 
-## 1. Run the Laptop Server for Local Testing
+## 1. Run the Laptop Server
 
-In PowerShell, from the project root:
+For same-Wi-Fi testing, use the default launcher from PowerShell in the project root:
 
 ```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 py -m pip install -r requirements.txt
-py -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+py scripts/start_server.py
 ```
 
-The database is created at `data/healthbot.sqlite3`. Open `http://127.0.0.1:8000` on the laptop. Keep this terminal running while testing.
+For remote access through an HTTPS tunnel, start the API bound to localhost instead:
+
+```powershell
+py scripts/start_server.py --host 127.0.0.1
+```
+
+The database is created at `data/healthbot.sqlite3`. Keep the server running and prevent the laptop from sleeping while users need access. The laptop must stay powered on and connected to the internet.
 
 ---
 
@@ -61,7 +69,42 @@ The database is created at `data/healthbot.sqlite3`. Open `http://127.0.0.1:8000
 
 ### Public Access
 
-Do not use port forwarding or a temporary tunnel to publish this prototype. HTTPS only encrypts traffic in transit; it does not make the app production-ready. Before inviting users, complete a security review and deploy behind a stable HTTPS endpoint with account recovery, abuse protection, encrypted/off-site backups, and a reliable always-on host. A laptop also needs uninterrupted power, network access, and a fixed address. The current GitHub release workflow accepts only an HTTPS API URL.
+Use Cloudflare Tunnel to give the laptop API an HTTPS address without opening router ports. Install `cloudflared` on the laptop. Keep the API running with `py scripts/start_server.py --host 127.0.0.1`, then test with a temporary tunnel in a second PowerShell window:
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+Cloudflare prints a temporary `https://...trycloudflare.com` URL. Enter that URL with `/api` in the APK's **Server Settings**. Temporary URLs change and are for testing only; don't use them for a published APK.
+
+For a stable address, use a domain managed by Cloudflare and create a named tunnel:
+
+```powershell
+cloudflared tunnel login
+cloudflared tunnel create beluga-health
+cloudflared tunnel route dns beluga-health api.yourdomain.com
+```
+
+Create `%USERPROFILE%\.cloudflared\config.yml` using the tunnel UUID and credentials file created by the previous commands:
+
+```yaml
+tunnel: YOUR-TUNNEL-UUID
+credentials-file: C:\Users\YOUR-WINDOWS-USER\.cloudflared\YOUR-TUNNEL-UUID.json
+ingress:
+  - hostname: api.yourdomain.com
+    service: http://127.0.0.1:8000
+  - service: http_status:404
+```
+
+With the API running, start the named tunnel:
+
+```powershell
+cloudflared tunnel run beluga-health
+```
+
+Set the APK server address to `https://api.yourdomain.com/api`. Set the GitHub Actions `API_BASE_URL` variable to the same value before building a release. The server and tunnel both need to stay running. Do not configure router port forwarding for port 8000.
+
+**This makes the prototype reachable from anywhere; it does not make it production-safe.** Use synthetic/test data only until the app has an independent security review, abuse protection, account recovery, secure backups, and an always-on hosting plan. The administrator can view all users' health records. Do not collect real health information from public users yet.
 
 ---
 
