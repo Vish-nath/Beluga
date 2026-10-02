@@ -389,3 +389,8 @@ def delete_reminder(reminder_id: int, user_id: CurrentUser) -> None:
         result = connection.execute("DELETE FROM reminders WHERE id = ? AND user_id = ?", (reminder_id, user_id))
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Reminder not found.")
+
+
+@app.get("/{path:path}")
+def frontend_fallback(path: str) -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
