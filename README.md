@@ -4,7 +4,9 @@
 
 Beluga Health is a health-record prototype with an Android APK, web client, FastAPI server, and SQLite database. Accounts use email and password. The administrator can view all account health records; ordinary accounts are restricted to their own records.
 
-[Download the latest Android APK](https://github.com/Vish-nath/Beluga/releases/latest/download/app-release.apk)
+[View Android releases](https://github.com/Vish-nath/Beluga/releases)
+
+No APK release is published yet. Download the APK from that page after a tagged Android release has been built successfully.
 
 **Do not expose this prototype to public users or enter real health data yet.** It still needs a production security review and controls such as verified account recovery, abuse protection, encrypted backups, and operational monitoring.
 
