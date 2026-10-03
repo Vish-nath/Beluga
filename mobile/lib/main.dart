@@ -8,6 +8,14 @@ const defaultApiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: 'http://10.0.2.2:8000/api',
 );
+const configuredApiBaseUrl = String.fromEnvironment('API_BASE_URL');
+
+String get platformDefaultApiBaseUrl {
+  if (configuredApiBaseUrl.isNotEmpty) return configuredApiBaseUrl;
+  return defaultTargetPlatform == TargetPlatform.macOS
+      ? 'http://127.0.0.1:8000/api'
+      : defaultApiBaseUrl;
+}
 
 const secureStorage = FlutterSecureStorage();
 
@@ -19,7 +27,7 @@ class HealthApi {
 
   String get activeBaseUrl => (baseUrl != null && baseUrl!.trim().isNotEmpty)
       ? baseUrl!.trim().replaceAll(RegExp(r'/+$'), '')
-      : defaultApiBaseUrl;
+      : platformDefaultApiBaseUrl;
 
   Future<dynamic> request(
     String path, {
@@ -100,7 +108,7 @@ class BelugaApp extends StatefulWidget {
 class _BelugaAppState extends State<BelugaApp> {
   String? _token;
   Map<String, dynamic>? _user;
-  String _baseUrl = defaultApiBaseUrl;
+  String _baseUrl = platformDefaultApiBaseUrl;
   bool _checkingSession = true;
 
   @override
@@ -304,7 +312,10 @@ class _ServerConfigDialogState extends State<ServerConfigDialog> {
                   onPressed: () => _controller.text = 'http://10.0.2.2:8000/api',
                 ),
                 ActionChip(
-                  label: const Text('Localhost', style: TextStyle(fontSize: 11)),
+                    label: Text(
+                      defaultTargetPlatform == TargetPlatform.macOS ? 'This Mac' : 'Localhost',
+                      style: const TextStyle(fontSize: 11),
+                    ),
                   onPressed: () => _controller.text = 'http://127.0.0.1:8000/api',
                 ),
               ],
@@ -462,24 +473,47 @@ class _AuthScreenState extends State<AuthScreen> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          _register
-                              ? 'Create your account with email and password'
-                              : 'Sign in with email and password',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.black54, fontSize: 13),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          transitionBuilder: (child, animation) => FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.12),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          ),
+                          child: Text(
+                            _register
+                                ? 'Create your account with email and password'
+                                : 'Sign in with email and password',
+                            key: ValueKey(_register),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.black54, fontSize: 13),
+                          ),
                         ),
                         const SizedBox(height: 20),
-                        if (_register) ...[
-                          TextFormField(
-                            controller: _name,
-                            decoration: const InputDecoration(labelText: 'Full name'),
-                            validator: (value) => value == null || value.trim().isEmpty
-                                ? 'Enter your name.'
-                                : null,
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeInOutCubic,
+                          child: Column(
+                            key: ValueKey(_register),
+                            children: _register
+                                ? [
+                                    TextFormField(
+                                      controller: _name,
+                                      decoration: const InputDecoration(labelText: 'Full name'),
+                                      validator: (value) => value == null || value.trim().isEmpty
+                                          ? 'Enter your name.'
+                                          : null,
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ]
+                                : const [],
                           ),
-                          const SizedBox(height: 12),
-                        ],
+                        ),
                         TextFormField(
                           controller: _email,
                           keyboardType: TextInputType.emailAddress,
@@ -526,16 +560,23 @@ class _AuthScreenState extends State<AuthScreen> {
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
-                          child: _busy
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            child: _busy
+                                ? const SizedBox(
+                                    key: ValueKey('busy'),
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    _register ? 'Create account' : 'Sign in',
+                                    key: ValueKey(_register),
                                   ),
-                                )
-                              : Text(_register ? 'Create account' : 'Sign in'),
+                          ),
                         ),
                         const SizedBox(height: 12),
                         TextButton(
@@ -688,7 +729,18 @@ class _HealthHomeState extends State<HealthHome> {
             ),
           Expanded(
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
+              duration: const Duration(milliseconds: 300),
+              reverseDuration: const Duration(milliseconds: 220),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.025, 0),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                  child: child,
+                ),
+              ),
               child: KeyedSubtree(key: ValueKey(_selected), child: page),
             ),
           ),
