@@ -71,19 +71,23 @@ The APK is written to `mobile/build/app/outputs/flutter-apk/app-release.apk`. Re
 
 ### Publish a GitHub release
 
-The Android release workflow runs when a version tag such as `v1.1.0` is pushed. Before tagging, configure **Settings > Secrets and variables > Actions**:
+Before publishing, configure **Settings > Secrets and variables > Actions**:
 
 - `API_BASE_URL` variable: a stable HTTPS API URL ending in `/api`.
 - `ANDROID_DEBUG_KEYSTORE_BASE64` secret: base64-encoded persistent Android signing keystore. Never commit the keystore or secret.
 
-Then push the tag:
+You can publish in either of these ways:
+
+- Push a version tag:
 
 ```sh
 git tag v1.1.0
 git push origin v1.1.0
 ```
 
-After the workflow succeeds, GitHub attaches `app-release.apk` to the release. A temporary tunnel URL is not suitable for a published build because it can change.
+- Or open **Actions > Android APK release > Run workflow**, select the branch to build, enter a version tag such as `v1.1.0`, and run it. The release is created for the selected commit.
+
+After the workflow succeeds, GitHub attaches `app-release.apk` to the release page. A temporary tunnel URL is not suitable for a published build because it can change.
 
 ## Build for macOS
 
