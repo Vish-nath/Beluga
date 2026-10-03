@@ -1,14 +1,21 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+
+import 'reminder_notifications.dart';
 
 const defaultApiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: 'http://10.0.2.2:8000/api',
 );
 const configuredApiBaseUrl = String.fromEnvironment('API_BASE_URL');
+const googleServerClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
 
 String get platformDefaultApiBaseUrl {
   if (configuredApiBaseUrl.isNotEmpty) return configuredApiBaseUrl;
@@ -83,6 +90,11 @@ class HealthApi {
         'password': password,
       }));
 
+  Future<Map<String, dynamic>> signInWithGoogle(String idToken) async =>
+      Map<String, dynamic>.from(await request('/auth/google', method: 'POST', body: {
+        'id_token': idToken,
+      }));
+
   Future<Map<String, dynamic>> register(
     String name,
     String email,
@@ -96,7 +108,11 @@ class HealthApi {
 
 }
 
-void main() => runApp(const BelugaApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ReminderNotifications.initialize();
+  runApp(const BelugaApp());
+}
 
 class BelugaApp extends StatefulWidget {
   const BelugaApp({super.key});
@@ -201,21 +217,37 @@ class _BelugaAppState extends State<BelugaApp> {
           ),
         ),
       ),
-      home: _checkingSession
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : _token == null
+      home: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero)
+                .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+            child: child,
+          ),
+        ),
+        child: _checkingSession
+            ? const Scaffold(
+                key: ValueKey('session-loading'),
+                body: Center(child: CircularProgressIndicator()),
+              )
+            : _token == null
               ? AuthScreen(
+                  key: const ValueKey('sign-in'),
                   baseUrl: _baseUrl,
                   onUpdateBaseUrl: _updateBaseUrl,
                   onAuthenticated: _acceptSession,
                 )
               : HealthHome(
+                  key: const ValueKey('signed-in'),
                   token: _token!,
                   baseUrl: _baseUrl,
                   user: _user!,
                   onSignOut: _signOut,
                   onUpdateBaseUrl: _updateBaseUrl,
                 ),
+      ),
     );
   }
 }
@@ -378,12 +410,14 @@ class AuthScreen extends StatefulWidget {
     required this.baseUrl,
     required this.onUpdateBaseUrl,
     required this.onAuthenticated,
+    this.initialRegister = false,
     super.key,
   });
 
   final String baseUrl;
   final ValueChanged<String> onUpdateBaseUrl;
   final ValueChanged<Map<String, dynamic>> onAuthenticated;
+  final bool initialRegister;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -397,6 +431,42 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _register = false;
   bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _register = widget.initialRegister;
+  }
+
+  Future<void> _signInWithGoogle() async {
+    if (googleServerClientId.isEmpty) {
+      setState(() => _error = 'Google sign-in is not configured for this build.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final google = GoogleSignIn(
+        scopes: const ['email'],
+        serverClientId: googleServerClientId,
+      );
+      final account = await google.signIn();
+      if (account == null) return;
+      final idToken = (await account.authentication).idToken;
+      if (idToken == null) throw Exception('Google did not return a verified sign-in token.');
+      final result = await HealthApi(null, baseUrl: widget.baseUrl).signInWithGoogle(idToken);
+      if (_register) Navigator.of(context).pop();
+      widget.onAuthenticated(result);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -413,6 +483,7 @@ class _AuthScreenState extends State<AuthScreen> {
               _password.text,
             )
           : await api.signIn(_email.text.trim(), _password.text);
+          if (_register) Navigator.of(context).pop();
       widget.onAuthenticated(result);
     } catch (error) {
       setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
@@ -451,7 +522,14 @@ class _AuthScreenState extends State<AuthScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const SizedBox(width: 32),
+                            if (_register)
+                              IconButton(
+                                tooltip: 'Back to sign in',
+                                onPressed: () => Navigator.of(context).maybePop(),
+                                icon: const Icon(Icons.arrow_back),
+                              )
+                            else
+                              const SizedBox(width: 32),
                             const Icon(
                               Icons.monitor_heart_outlined,
                               size: 40,
@@ -578,14 +656,50 @@ class _AuthScreenState extends State<AuthScreen> {
                                   ),
                           ),
                         ),
+                        const SizedBox(height: 8),
+                        if (googleServerClientId.isNotEmpty)
+                          OutlinedButton.icon(
+                            onPressed: _busy ? null : _signInWithGoogle,
+                            icon: const Icon(Icons.account_circle_outlined),
+                            label: const Text('Continue with Google'),
+                          ),
                         const SizedBox(height: 12),
                         TextButton(
                           onPressed: _busy
                               ? null
-                              : () => setState(() {
-                                    _register = !_register;
-                                    _error = null;
-                                  }),
+                              : () {
+                                  if (_register) {
+                                    Navigator.of(context).maybePop();
+                                    return;
+                                  }
+                                  Navigator.of(context).push(
+                                    PageRouteBuilder<void>(
+                                      transitionDuration: const Duration(milliseconds: 280),
+                                      pageBuilder: (context, animation, secondaryAnimation) =>
+                                          AuthScreen(
+                                        baseUrl: widget.baseUrl,
+                                        onUpdateBaseUrl: widget.onUpdateBaseUrl,
+                                        onAuthenticated: widget.onAuthenticated,
+                                        initialRegister: true,
+                                      ),
+                                      transitionsBuilder:
+                                          (context, animation, secondaryAnimation, child) =>
+                                              FadeTransition(
+                                        opacity: animation,
+                                        child: SlideTransition(
+                                          position: Tween<Offset>(
+                                            begin: const Offset(0.04, 0),
+                                            end: Offset.zero,
+                                          ).animate(CurvedAnimation(
+                                            parent: animation,
+                                            curve: Curves.easeOutCubic,
+                                          )),
+                                          child: child,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
                           child: Text(
                             _register
                                 ? 'Already have an account? Sign in'
@@ -658,6 +772,74 @@ class HealthHome extends StatefulWidget {
 class _HealthHomeState extends State<HealthHome> {
   int _selected = 0;
   late final HealthApi _api = HealthApi(widget.token, baseUrl: widget.baseUrl);
+  StreamSubscription<NotificationResponse>? _notificationSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationSubscription = reminderNotificationActions.stream.listen(
+      _handleNotificationResponse,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final response = ReminderNotifications.takeLaunchResponse();
+      if (response != null) _handleNotificationResponse(response);
+    });
+    _syncDeviceReminders();
+  }
+
+  Future<void> _syncDeviceReminders() async {
+    try {
+      final results = await Future.wait([
+        _api.request('/me'),
+        _api.request('/reminders'),
+      ]);
+      final profile = Map<String, dynamic>.from(results[0]['profile'] ?? {});
+      final prescriptions = List<Map<String, dynamic>>.from(
+        (profile['prescriptions'] as List? ?? []).map(Map<String, dynamic>.from),
+      );
+      final reminders = List<Map<String, dynamic>>.from(
+        (results[1] as List).map(Map<String, dynamic>.from),
+      );
+      await ReminderNotifications.sync(prescriptions: prescriptions, reminders: reminders);
+    } catch (_) {}
+  }
+
+  Future<void> _handleNotificationResponse(NotificationResponse response) async {
+    if (response.actionId != 'mark_complete' || response.payload == null) return;
+    try {
+      final payload = Map<String, dynamic>.from(jsonDecode(response.payload!) as Map);
+      if (payload['kind'] == 'reminder') {
+        await _api.request('/reminders/${payload['id']}/complete', method: 'POST');
+      } else if (payload['kind'] == 'prescription') {
+        await _api.request(
+          '/prescription-completions',
+          method: 'POST',
+          body: {
+            'prescription_id': payload['id'],
+            'scheduled_time': payload['time'],
+            'completed_on': DateTime.now().toIso8601String().substring(0, 10),
+          },
+        );
+      } else {
+        return;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reminder marked complete.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _notificationSubscription?.cancel();
+    super.dispose();
+  }
 
   List<String> get _pages => [
         'Patients',
@@ -2137,6 +2319,8 @@ class OverviewPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
+            RoutineGuide(profile: profile),
+            const SizedBox(height: 14),
 
             Wrap(spacing: 12, runSpacing: 12, children: [
               AnimatedReveal(
@@ -2209,6 +2393,85 @@ class OverviewPage extends StatelessWidget {
       },
     );
   }
+}
+
+class RoutineGuide extends StatelessWidget {
+  const RoutineGuide({required this.profile, super.key});
+  final Map<String, dynamic> profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final routine = profile['daily_routine']?.toString().trim() ?? '';
+    final appetite = profile['appetite']?.toString().trim() ?? '';
+    final prescriptions = profile['prescriptions'] as List? ?? [];
+    final conditions = profile['conditions'] as List? ?? [];
+    final familyHistory = profile['family_history']?.toString().trim() ?? '';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Daily wellness routine', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            const Text(
+              'General routine prompts only. This app does not diagnose or prescribe treatment.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const Divider(height: 20),
+            _routineLine(
+              Icons.restaurant_outlined,
+              'Meals',
+              appetite.isEmpty
+                  ? 'Plan regular meals that suit your appetite; ask your care team about condition-specific diet needs.'
+                  : 'Appetite notes: $appetite. Follow any diet guidance from your clinician or dietitian.',
+            ),
+            _routineLine(
+              Icons.schedule_outlined,
+              'Your daily rhythm',
+              routine.isEmpty
+                  ? 'Add your usual routine in Account & Profile to keep your schedule notes in one place.'
+                  : routine,
+            ),
+            _routineLine(
+              Icons.medication_outlined,
+              'Prescriptions',
+              prescriptions.isEmpty
+                  ? 'Add medicines exactly as prescribed to schedule reminders.'
+                  : 'Reminders use the medicine names, quantities, and times you entered from your doctor’s instructions. Do not change a prescription based on this app.',
+            ),
+            if (conditions.isNotEmpty || familyHistory.isNotEmpty)
+              _routineLine(
+                Icons.health_and_safety_outlined,
+                'Health context',
+                'Your health and family-history notes are saved for reference; they are not used to generate a diagnosis or treatment plan.',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _routineLine(IconData icon, String title, String message) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 20, color: const Color(0xff176b55)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(message, style: const TextStyle(fontSize: 13)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class AnimatedReveal extends StatelessWidget {
@@ -2371,7 +2634,28 @@ class _RemindersPageState extends State<RemindersPage> {
   @override
   void initState() {
     super.initState();
-    _reminders = widget.api.request('/reminders');
+    _reminders = _loadAndSyncReminders();
+  }
+
+  Future<dynamic> _loadAndSyncReminders() async {
+    final results = await Future.wait([
+      widget.api.request('/reminders'),
+      widget.api.request('/me'),
+    ]);
+    final profile = Map<String, dynamic>.from(results[1]['profile'] ?? {});
+    await ReminderNotifications.sync(
+      prescriptions: List<Map<String, dynamic>>.from(
+        (profile['prescriptions'] as List? ?? []).map(Map<String, dynamic>.from),
+      ),
+      reminders: List<Map<String, dynamic>>.from(
+        (results[0] as List).map(Map<String, dynamic>.from),
+      ),
+    );
+    return results[0];
+  }
+
+  void _reloadReminders() {
+    setState(() => _reminders = _loadAndSyncReminders());
   }
 
   Future<void> _addReminder() async {
@@ -2431,7 +2715,8 @@ class _RemindersPageState extends State<RemindersPage> {
           'instruction': instruction.text.trim(),
         },
       );
-      setState(() => _reminders = widget.api.request('/reminders'));
+      await ReminderNotifications.requestPermission();
+      _reloadReminders();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
@@ -2442,7 +2727,7 @@ class _RemindersPageState extends State<RemindersPage> {
   Future<void> _complete(int id) async {
     try {
       await widget.api.request('/reminders/$id/complete', method: 'POST');
-      setState(() => _reminders = widget.api.request('/reminders'));
+      _reloadReminders();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
@@ -2453,11 +2738,21 @@ class _RemindersPageState extends State<RemindersPage> {
   Future<void> _delete(int id) async {
     try {
       await widget.api.request('/reminders/$id', method: 'DELETE');
-      setState(() => _reminders = widget.api.request('/reminders'));
+      _reloadReminders();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
       }
+    }
+  }
+
+  Future<void> _enableNotifications() async {
+    await ReminderNotifications.requestPermission();
+    _reloadReminders();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notification permission requested.')),
+      );
     }
   }
 
@@ -2473,10 +2768,22 @@ class _RemindersPageState extends State<RemindersPage> {
             children: [
               Align(
                 alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: _addReminder,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add reminder'),
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _enableNotifications,
+                      icon: const Icon(Icons.notifications_active_outlined),
+                      label: const Text('Enable notifications'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _addReminder,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add reminder'),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),
@@ -2613,6 +2920,15 @@ class _ProfileFormState extends State<ProfileForm> {
       TextEditingController(text: (widget.profile['conditions'] as List? ?? []).join(', '));
   late final _medications =
       TextEditingController(text: (widget.profile['medications'] as List? ?? []).join(', '));
+  late final _appetite = TextEditingController(text: widget.profile['appetite'] ?? '');
+  late final _dailyRoutine = TextEditingController(text: widget.profile['daily_routine'] ?? '');
+  late final _familyHistory = TextEditingController(text: widget.profile['family_history'] ?? '');
+  late List<Map<String, dynamic>> _prescriptions = List<Map<String, dynamic>>.from(
+    (widget.profile['prescriptions'] as List? ?? []).map(
+      (item) => Map<String, dynamic>.from(item),
+    ),
+  );
+  late String _profileImage = widget.profile['profile_image'] ?? '';
   String _gender = '';
   String _bloodType = '';
   bool _busy = false;
@@ -2622,6 +2938,126 @@ class _ProfileFormState extends State<ProfileForm> {
     super.initState();
     _gender = widget.profile['gender'] ?? '';
     _bloodType = widget.profile['blood_type'] ?? '';
+  }
+
+  Future<void> _pickProfileImage() async {
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 720,
+      imageQuality: 78,
+    );
+    if (image == null) return;
+    final bytes = await image.readAsBytes();
+    if (bytes.length > 1_000_000) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose a smaller profile image.')),
+        );
+      }
+      return;
+    }
+    setState(() => _profileImage = 'data:image/jpeg;base64,${base64Encode(bytes)}');
+  }
+
+  Future<void> _editPrescription({Map<String, dynamic>? prescription}) async {
+    final name = TextEditingController(text: prescription?['name']?.toString() ?? '');
+    final dose = TextEditingController(text: prescription?['prescribed_dose']?.toString() ?? '');
+    final quantity = TextEditingController(text: prescription?['quantity']?.toString() ?? '');
+    final times = TextEditingController(
+      text: ((prescription?['intake_times'] as List?) ?? []).join(', '),
+    );
+    final instructions = TextEditingController(text: prescription?['instructions']?.toString() ?? '');
+    final formKey = GlobalKey<FormState>();
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(prescription == null ? 'Add prescribed medicine' : 'Edit prescribed medicine'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Medicine name'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Enter the name from the prescription.'
+                      : null,
+                ),
+                TextFormField(
+                  controller: dose,
+                  decoration: const InputDecoration(labelText: 'Doctor-prescribed dose'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Enter the dose as written by the doctor.'
+                      : null,
+                ),
+                TextFormField(
+                  controller: quantity,
+                  decoration: const InputDecoration(labelText: 'Quantity per intake'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Enter the prescribed quantity per intake.'
+                      : null,
+                ),
+                TextFormField(
+                  controller: times,
+                  decoration: const InputDecoration(
+                    labelText: 'Intake times',
+                    hintText: '08:00, 20:00',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return 'Enter at least one time.';
+                    final parsed = value.split(',').map((item) => item.trim());
+                    return parsed.every((item) => RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(item))
+                        ? null
+                        : 'Use 24-hour times, separated by commas.';
+                  },
+                ),
+                TextField(
+                  controller: instructions,
+                  maxLines: 2,
+                  decoration: const InputDecoration(labelText: 'Doctor instructions'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              Navigator.pop(context, {
+                'id': prescription?['id'] ?? DateTime.now().microsecondsSinceEpoch.toString(),
+                'name': name.text.trim(),
+                'prescribed_dose': dose.text.trim(),
+                'quantity': quantity.text.trim(),
+                'intake_times': times.text
+                    .split(',')
+                    .map((item) => item.trim())
+                    .toList(),
+                'instructions': instructions.text.trim(),
+              });
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    name.dispose();
+    dose.dispose();
+    quantity.dispose();
+    times.dispose();
+    instructions.dispose();
+    if (result == null || !mounted) return;
+    setState(() {
+      final index = _prescriptions.indexWhere((item) => item['id'] == result['id']);
+      if (index == -1) {
+        _prescriptions = [..._prescriptions, result];
+      } else {
+        _prescriptions[index] = result;
+      }
+    });
   }
 
   Future<void> _save() async {
@@ -2648,8 +3084,18 @@ class _ProfileFormState extends State<ProfileForm> {
               .map((item) => item.trim())
               .where((item) => item.isNotEmpty)
               .toList(),
+              'appetite': _appetite.text.trim(),
+              'daily_routine': _dailyRoutine.text.trim(),
+              'family_history': _familyHistory.text.trim(),
+              'prescriptions': _prescriptions,
+              'profile_image': _profileImage,
         },
       );
+      await ReminderNotifications.requestPermission();
+      final reminders = await widget.api.request('/reminders');
+      await ReminderNotifications.sync(prescriptions: _prescriptions, reminders: List<Map<String, dynamic>>.from(
+        (reminders as List).map(Map<String, dynamic>.from),
+      ));
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Profile saved.')));
@@ -2665,9 +3111,43 @@ class _ProfileFormState extends State<ProfileForm> {
   }
 
   @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _age.dispose();
+    _height.dispose();
+    _weight.dispose();
+    _location.dispose();
+    _conditions.dispose();
+    _medications.dispose();
+    _appetite.dispose();
+    _dailyRoutine.dispose();
+    _familyHistory.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          Center(
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 38,
+                  backgroundImage: _profileImage.isEmpty
+                      ? null
+                      : MemoryImage(base64Decode(_profileImage.split(',').last)),
+                  child: _profileImage.isEmpty ? const Icon(Icons.person_outline, size: 38) : null,
+                ),
+                TextButton.icon(
+                  onPressed: _pickProfileImage,
+                  icon: const Icon(Icons.photo_outlined),
+                  label: const Text('Choose profile photo'),
+                ),
+              ],
+            ),
+          ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -2753,6 +3233,65 @@ class _ProfileFormState extends State<ProfileForm> {
             maxLines: 2,
             decoration: const InputDecoration(
               labelText: 'Current Medications (comma-separated)',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _appetite,
+            maxLines: 2,
+            decoration: const InputDecoration(labelText: 'Appetite and meal preferences'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _dailyRoutine,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: 'Daily routine and usual meal times'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _familyHistory,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: 'Family health history'),
+          ),
+          const SizedBox(height: 20),
+          Text('Doctor-prescribed medicines', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          for (final prescription in _prescriptions)
+            Card(
+              child: ListTile(
+                title: Text(prescription['name']?.toString() ?? ''),
+                subtitle: Text([
+                  if ((prescription['prescribed_dose'] ?? '').toString().isNotEmpty)
+                    prescription['prescribed_dose'],
+                  if ((prescription['quantity'] ?? '').toString().isNotEmpty)
+                    'Quantity: ${prescription['quantity']}',
+                  if ((prescription['intake_times'] as List? ?? []).isNotEmpty)
+                    (prescription['intake_times'] as List).join(', '),
+                  if ((prescription['instructions'] ?? '').toString().isNotEmpty)
+                    prescription['instructions'],
+                ].join(' · ')),
+                trailing: Wrap(
+                  children: [
+                    IconButton(
+                      tooltip: 'Edit prescription details',
+                      onPressed: () => _editPrescription(prescription: prescription),
+                      icon: const Icon(Icons.edit_outlined),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove prescription',
+                      onPressed: () => setState(() => _prescriptions.remove(prescription)),
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: () => _editPrescription(),
+              icon: const Icon(Icons.add),
+              label: const Text('Add from doctor prescription'),
             ),
           ),
           const SizedBox(height: 16),
