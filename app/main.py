@@ -60,6 +60,11 @@ def initialize_database() -> None:
                 location TEXT NOT NULL DEFAULT '',
                 conditions TEXT NOT NULL DEFAULT '[]',
                 medications TEXT NOT NULL DEFAULT '[]',
+                appetite TEXT NOT NULL DEFAULT '',
+                daily_routine TEXT NOT NULL DEFAULT '',
+                family_history TEXT NOT NULL DEFAULT '',
+                prescriptions TEXT NOT NULL DEFAULT '[]',
+                profile_image TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS sessions (
@@ -91,6 +96,15 @@ def initialize_database() -> None:
                 reminder_id INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
                 completed_on TEXT NOT NULL,
                 PRIMARY KEY (reminder_id, completed_on)
+            );
+            CREATE TABLE IF NOT EXISTS prescription_completions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                prescription_id TEXT NOT NULL,
+                scheduled_time TEXT NOT NULL,
+                completed_on TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(user_id, prescription_id, scheduled_time, completed_on)
             );
             CREATE TABLE IF NOT EXISTS dataset_summary (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -157,6 +171,15 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE profiles ADD COLUMN medications TEXT NOT NULL DEFAULT '[]'")
         if "blood_type" not in profile_columns:
             connection.execute("ALTER TABLE profiles ADD COLUMN blood_type TEXT NOT NULL DEFAULT ''")
+        for column, declaration in {
+            "appetite": "TEXT NOT NULL DEFAULT ''",
+            "daily_routine": "TEXT NOT NULL DEFAULT ''",
+            "family_history": "TEXT NOT NULL DEFAULT ''",
+            "prescriptions": "TEXT NOT NULL DEFAULT '[]'",
+            "profile_image": "TEXT NOT NULL DEFAULT ''",
+        }.items():
+            if column not in profile_columns:
+                connection.execute(f"ALTER TABLE profiles ADD COLUMN {column} {declaration}")
 
 
 def utc_now() -> datetime:
@@ -175,6 +198,7 @@ def profile_dict(row: sqlite3.Row | None) -> dict | None:
     profile = dict(row)
     profile["conditions"] = json.loads(profile.pop("conditions", "[]"))
     profile["medications"] = json.loads(profile.pop("medications", "[]"))
+    profile["prescriptions"] = json.loads(profile.pop("prescriptions", "[]"))
     return profile
 
 
@@ -205,6 +229,15 @@ def create_access_token(connection: sqlite3.Connection, user_id: int) -> str:
         (token_hash, user_id, expires_at),
     )
     return token
+
+
+class PrescriptionInput(BaseModel):
+    id: str = Field(default_factory=lambda: secrets.token_hex(8), min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=100)
+    prescribed_dose: str = Field(default="", max_length=100)
+    quantity: str = Field(default="", max_length=60)
+    intake_times: list[str] = Field(default_factory=list, max_length=8)
+    instructions: str = Field(default="", max_length=240)
 
 
 class AccountInput(BaseModel):
@@ -242,6 +275,11 @@ class ProfileInput(BaseModel):
     location: str = Field(default="", max_length=120)
     conditions: list[str] = Field(default_factory=list, max_length=30)
     medications: list[str] = Field(default_factory=list, max_length=50)
+    appetite: str = Field(default="", max_length=500)
+    daily_routine: str = Field(default="", max_length=2000)
+    family_history: str = Field(default="", max_length=2000)
+    prescriptions: list[PrescriptionInput] = Field(default_factory=list, max_length=30)
+    profile_image: str = Field(default="", max_length=1_500_000)
 
 
 class MeasurementInput(BaseModel):
@@ -257,6 +295,12 @@ class ReminderInput(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     scheduled_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     instruction: str = Field(default="", max_length=120)
+
+
+class PrescriptionCompletionInput(BaseModel):
+    prescription_id: str = Field(min_length=1, max_length=32)
+    scheduled_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    completed_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
 class PatientInput(BaseModel):
@@ -502,9 +546,12 @@ def update_profile(payload: ProfileInput, user_id: CurrentUser) -> dict:
     with connect_db() as connection:
         connection.execute("UPDATE users SET name = ? WHERE id = ?", (payload.name.strip(), user_id))
         connection.execute(
-            "UPDATE profiles SET age = ?, gender = ?, blood_type = ?, height_cm = ?, weight_kg = ?, bmi = ?, location = ?, conditions = ?, medications = ?, updated_at = ? WHERE user_id = ?",
+              "UPDATE profiles SET age = ?, gender = ?, blood_type = ?, height_cm = ?, weight_kg = ?, bmi = ?, location = ?, conditions = ?, medications = ?, appetite = ?, daily_routine = ?, family_history = ?, prescriptions = ?, profile_image = ?, updated_at = ? WHERE user_id = ?",
             (payload.age, payload.gender.strip(), payload.blood_type.strip(), payload.height_cm, payload.weight_kg, bmi,
-             payload.location.strip(), json.dumps(payload.conditions), json.dumps(payload.medications), utc_now().isoformat(), user_id),
+               payload.location.strip(), json.dumps(payload.conditions), json.dumps(payload.medications),
+               payload.appetite.strip(), payload.daily_routine.strip(), payload.family_history.strip(),
+               json.dumps([item.model_dump() for item in payload.prescriptions]), payload.profile_image,
+               utc_now().isoformat(), user_id),
         )
         profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,)).fetchone()
     return profile_dict(profile) or {}
@@ -912,6 +959,45 @@ def complete_reminder(reminder_id: int, user_id: CurrentUser) -> None:
             "INSERT OR IGNORE INTO reminder_completions (reminder_id, completed_on) VALUES (?, ?)",
             (reminder_id, date.today().isoformat()),
         )
+
+
+@app.post("/api/prescription-completions", status_code=201)
+def complete_prescription_intake(
+    payload: PrescriptionCompletionInput,
+    user_id: CurrentUser,
+) -> dict:
+    try:
+        completed_on = date.fromisoformat(payload.completed_on)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="Use a valid local completion date.") from error
+    if abs((completed_on - date.today()).days) > 1:
+        raise HTTPException(status_code=422, detail="Completion date must be today in your local timezone.")
+
+    with connect_db() as connection:
+        profile = connection.execute(
+            "SELECT prescriptions FROM profiles WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        prescriptions = json.loads(profile["prescriptions"] if profile else "[]")
+        valid_intake = any(
+            item.get("id") == payload.prescription_id
+            and payload.scheduled_time in item.get("intake_times", [])
+            for item in prescriptions
+        )
+        if not valid_intake:
+            raise HTTPException(status_code=404, detail="Prescription schedule not found.")
+        connection.execute(
+            """INSERT OR IGNORE INTO prescription_completions
+               (user_id, prescription_id, scheduled_time, completed_on, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                user_id,
+                payload.prescription_id,
+                payload.scheduled_time,
+                payload.completed_on,
+                utc_now().isoformat(),
+            ),
+        )
+    return {"completed": True, "completed_on": payload.completed_on}
 
 
 @app.delete("/api/reminders/{reminder_id}", status_code=204)

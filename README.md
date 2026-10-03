@@ -14,10 +14,12 @@
 
 ## What Works Today
 
-- **Accounts:** Register and sign in with email and password. The mobile client currently does not provide email OTP sign-in.
-- **Personal profile:** View and edit name, age, gender, blood type, height, weight, location, health conditions, and medications. BMI is calculated from height and weight.
+- **Accounts:** Register with email and password, sign in with a password, or use Google sign-in when OAuth is configured. Email OTP delivery is not implemented.
+- **Personal profile:** View and edit age, gender, blood type, height, weight, location, conditions, appetite, daily routine, family health history, and a profile photo. BMI is calculated from height and weight.
+- **Doctor-entered prescriptions:** Save the medicine name, prescribed dose, quantity per intake, clinician instructions, and one or more daily intake times. The app records the instructions provided by the user and does not create or modify prescriptions.
 - **Health tracking:** Record steps, active minutes, sleep duration, fasting glucose, and blood pressure.
-- **Reminders:** Create, complete, and remove reminders in the app. These are stored on the server; scheduled operating-system notifications and actions from the notification shade are not implemented yet.
+- **Reminders:** Create meal or routine reminders in the app and get daily local notifications on Android/macOS. Notification actions can mark a medicine as taken or a reminder as done; completion records sync to the laptop server when the action opens the app.
+- **Routine guide:** The dashboard displays general, non-clinical prompts and the user's saved routine/appetite notes. It does not use a medical AI model or generate personalized diet treatment.
 - **Patient records:** Keep patient demographics, conditions, allergies, medications, and visit notes, including measurements and follow-up dates.
 - **Laptop-hosted data:** FastAPI serves the clients and stores data in `data/healthbot.sqlite3`. Server settings in the mobile client can be changed and tested.
 
@@ -25,11 +27,9 @@
 
 The following items describe the intended direction and are **not yet available in the app**:
 
-- Doctor-entered prescriptions with tablet name, prescribed quantity, dosage instructions, and intake schedule. The app should record clinician instructions, not create or change prescriptions.
-- More profile context such as appetite, daily routine, family health history, and user-provided location details.
-- Personalized healthy meal and daily-routine guidance based on user-entered information. It should not recommend tablets or present generated guidance as a diagnosis or treatment plan.
-- Scheduled device notifications for medication and meals, with actions to record whether the user took a tablet or ate a meal.
-- Profile photo, email verification/OTP login, and a packaged macOS download.
+- Clinically reviewed, personalized diet and daily-routine guidance. The current routine guide is a transparent template, not an AI analysis; blood type, gender, and family history are not used to infer diet or treatment.
+- Email OTP delivery and account recovery. Google OAuth and email/password are the available sign-in methods.
+- A packaged macOS download. The macOS target can be built from source, but no signed Mac installer is published.
 
 ## Architecture
 
@@ -55,6 +55,15 @@ py scripts/start_server.py
 
 The API is available at `http://<laptop-ip>:8000`; the mobile API base URL ends in `/api`. To find the laptop's address, run `ipconfig`. Connect the phone and laptop to the same private Wi-Fi, then set the APK's **Server Settings** to a URL such as `http://192.168.1.20:8000/api`. Allow Python through Windows Firewall on private networks if prompted.
 
+For Google sign-in, configure a Google OAuth **Web client ID** in Google Cloud. Set the same value in `GOOGLE_CLIENT_ID` on the laptop server and `GOOGLE_SERVER_CLIENT_ID` in the mobile build. On Windows PowerShell, set the server value before launching it:
+
+```powershell
+$env:GOOGLE_CLIENT_ID = "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com"
+py scripts/start_server.py
+```
+
+Also register the Android package name and signing certificate in Google Cloud. Google sign-in is hidden when the APK is built without a client ID. Email OTP delivery is not configured; users can use Google sign-in or email/password.
+
 ## Get the Android APK
 
 Visit [GitHub Releases](https://github.com/Vish-nath/Beluga/releases). **There is no published APK at this time.** Once a tagged build succeeds, download `app-release.apk` from its release entry.
@@ -67,7 +76,7 @@ py bootstrap.py
 flutter build apk --release --dart-define=API_BASE_URL=http://192.168.1.20:8000/api
 ```
 
-The APK is written to `mobile/build/app/outputs/flutter-apk/app-release.apk`. Replace the example IP with the server laptop's address.
+To enable Google sign-in, also pass `--dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID`. The APK is written to `mobile/build/app/outputs/flutter-apk/app-release.apk`. Replace the example IP with the server laptop's address.
 
 ### Publish a GitHub release
 
@@ -75,6 +84,7 @@ Before publishing, configure **Settings > Secrets and variables > Actions**:
 
 - `API_BASE_URL` variable: a stable HTTPS API URL ending in `/api`.
 - `ANDROID_DEBUG_KEYSTORE_BASE64` secret: base64-encoded persistent Android signing keystore. Never commit the keystore or secret.
+- `GOOGLE_CLIENT_ID` variable (optional): Google OAuth Web client ID. Set the same ID as `GOOGLE_CLIENT_ID` on the laptop server to enable Google sign-in in the APK.
 
 You can publish in either of these ways:
 
@@ -96,7 +106,7 @@ An APK only runs on Android. To build the separate macOS app, use a Mac with Flu
 ```sh
 cd mobile
 python3 bootstrap.py
-flutter build macos --release --dart-define=API_BASE_URL=http://127.0.0.1:8000/api
+flutter build macos --release --dart-define=API_BASE_URL=http://127.0.0.1:8000/api --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID
 ```
 
 The `127.0.0.1` address is suitable when the API server is running on that same Mac. macOS packaging and signing are not part of the current GitHub release workflow.

@@ -34,7 +34,12 @@ def prepare_android_networking() -> None:
 
         # Add permissions if not present
         existing_permissions = {elem.attrib.get(f"{{{ANDROID_NAMESPACE}}}name") for elem in root.findall("uses-permission")}
-        for perm in ("android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"):
+        for perm in (
+            "android.permission.INTERNET",
+            "android.permission.ACCESS_NETWORK_STATE",
+            "android.permission.POST_NOTIFICATIONS",
+            "android.permission.RECEIVE_BOOT_COMPLETED",
+        ):
             if perm not in existing_permissions:
                 p_elem = ElementTree.SubElement(root, "uses-permission")
                 p_elem.set(f"{{{ANDROID_NAMESPACE}}}name", perm)
@@ -43,6 +48,36 @@ def prepare_android_networking() -> None:
         app_elem = root.find("application")
         if app_elem is not None:
             app_elem.set(f"{{{ANDROID_NAMESPACE}}}usesCleartextTraffic", "true")
+            receivers = {
+                receiver.attrib.get(f"{{{ANDROID_NAMESPACE}}}name"): receiver
+                for receiver in app_elem.findall("receiver")
+            }
+            scheduled_receiver = "com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            if scheduled_receiver not in receivers:
+                receiver = ElementTree.SubElement(app_elem, "receiver")
+                receiver.set(f"{{{ANDROID_NAMESPACE}}}name", scheduled_receiver)
+                receiver.set(f"{{{ANDROID_NAMESPACE}}}exported", "false")
+
+            boot_receiver = "com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            if boot_receiver not in receivers:
+                receiver = ElementTree.SubElement(app_elem, "receiver")
+                receiver.set(f"{{{ANDROID_NAMESPACE}}}name", boot_receiver)
+                receiver.set(f"{{{ANDROID_NAMESPACE}}}exported", "false")
+                intent_filter = ElementTree.SubElement(receiver, "intent-filter")
+                for action_name in (
+                    "android.intent.action.BOOT_COMPLETED",
+                    "android.intent.action.MY_PACKAGE_REPLACED",
+                    "android.intent.action.QUICKBOOT_POWERON",
+                    "com.htc.intent.action.QUICKBOOT_POWERON",
+                ):
+                    action = ElementTree.SubElement(intent_filter, "action")
+                    action.set(f"{{{ANDROID_NAMESPACE}}}name", action_name)
+
+            action_receiver = "com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            if action_receiver not in receivers:
+                receiver = ElementTree.SubElement(app_elem, "receiver")
+                receiver.set(f"{{{ANDROID_NAMESPACE}}}name", action_receiver)
+                receiver.set(f"{{{ANDROID_NAMESPACE}}}exported", "false")
 
         tree.write(main_manifest, encoding="utf-8", xml_declaration=True)
 
@@ -60,6 +95,7 @@ def prepare_macos_entitlements() -> None:
             entitlements["keychain-access-groups"] = [
                 "$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)"
             ]
+            entitlements["com.apple.security.files.user-selected.read-only"] = True
             with entitlement_file.open("wb") as destination:
                 plistlib.dump(entitlements, destination, sort_keys=False)
 
