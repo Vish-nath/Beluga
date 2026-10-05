@@ -34,8 +34,10 @@ google-services.json
 .venv/
 __pycache__/
 *.py[cod]
-data/
+data/*.sqlite3
 *.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 
 # Android Profiling
 *.hprof
