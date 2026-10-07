@@ -1,3 +1,6 @@
+-- Legacy SQLite schema; the application now uses MongoDB.
+-- MongoDB collections and indexes are initialized by app/database.py.
+-- This file is retained only as a historical reference.
 -- Beluga Health Database Schema
 -- SQLite Database: healthbot.sqlite3
 -- Generated automatically

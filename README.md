@@ -2,7 +2,7 @@
 
 ## Personal health tracking, medication reminders, and patient records
 
-**Beluga Health** is a student project prototype with a Flutter mobile client, a web client, and a Python API backed by SQLite on a laptop. The long-term goal is to help users organize doctor-provided health information and build healthier daily habits.
+**Beluga Health** is a student project prototype with a Flutter mobile client, a web client, and a Python API backed by MongoDB. The long-term goal is to help users organize doctor-provided health information and build healthier daily habits.
 
 | Client | Availability |
 | --- | --- |
@@ -21,7 +21,7 @@
 - **Reminders:** Create meal or routine reminders in the app and get daily local notifications on Android/macOS. Notification actions can mark a medicine as taken or a reminder as done; completion records sync to the laptop server when the action opens the app.
 - **Routine guide:** The dashboard displays general, non-clinical prompts and the user's saved routine/appetite notes. It does not use a medical AI model or generate personalized diet treatment.
 - **Patient records:** Keep patient demographics, conditions, allergies, medications, and visit notes, including measurements and follow-up dates.
-- **Laptop-hosted data:** FastAPI serves the clients and stores data in `data/healthbot.sqlite3`. Server settings in the mobile client can be changed and tested.
+- **MongoDB storage:** FastAPI connects to MongoDB using the `MONGODB_URI` connection string and stores app data in the configured `MONGODB_DATABASE` database. Server settings in the mobile client can be changed and tested.
 
 ## Planned Product Scope
 
@@ -37,10 +37,10 @@ The following items describe the intended direction and are **not yet available 
 flowchart LR
   A[Android app] -->|HTTPS or private Wi-Fi| C[FastAPI on laptop]
   B[macOS app or web client] -->|Local network| C
-  C --> D[(SQLite database on laptop)]
+  C --> D[(MongoDB)]
 ```
 
-The laptop must remain powered on and connected while clients use its server. A mobile device on the same Wi-Fi network connects using the laptop's private IPv4 address.
+The API server and MongoDB must be reachable while clients use the app. A mobile device on the same Wi-Fi network connects to the API server using the laptop's private IPv4 address.
 
 ## Run the Server
 
@@ -50,10 +50,15 @@ From the repository root on Windows PowerShell:
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 py -m pip install -r requirements.txt
+Copy-Item .env.example .env
+notepad .env
+py scripts/inspect_and_setup_db.py
 py scripts/start_server.py
 ```
 
-The API is available at `http://<laptop-ip>:8000`; the mobile API base URL ends in `/api`. To find the laptop's address, run `ipconfig`. Connect the phone and laptop to the same private Wi-Fi, then set the APK's **Server Settings** to a URL such as `http://192.168.1.20:8000/api`. Allow Python through Windows Firewall on private networks if prompted.
+Put your MongoDB connection string in `.env` as `MONGODB_URI`. The database name in the URI is used when present; otherwise the API uses `beluga`. Set `MONGODB_DATABASE` only when you want to override that choice. The tracked `.env.example` contains placeholders only; `.env` is ignored by Git. For MongoDB Atlas, use its connection string and ensure the API server's IP is allowed by the cluster's network access rules. For a local MongoDB server, a URI such as `mongodb://localhost:27017` works. The inspection command verifies the connection and creates the required indexes.
+
+The API is available at `http://<laptop-ip>:8000`; the mobile API base URL ends in `/api`. To find the laptop's address, run `ipconfig`. Connect the phone and laptop to the same private Wi-Fi, then set the APK's **Server Settings** to a URL such as `http://192.168.1.20:8000/api`. Allow Python through Windows Firewall on private networks if prompted. Existing data in the old SQLite file is not migrated automatically; the app now reads and writes MongoDB.
 
 For Google sign-in, configure a Google OAuth **Web client ID** in Google Cloud. Set the same value in `GOOGLE_CLIENT_ID` on the laptop server and `GOOGLE_SERVER_CLIENT_ID` in the mobile build. On Windows PowerShell, set the server value before launching it:
 

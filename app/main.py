@@ -6,7 +6,6 @@ import os
 import re
 import secrets
 import socket
-import sqlite3
 import urllib.request
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -17,169 +16,29 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pymongo.database import Database
+from pymongo.errors import DuplicateKeyError
 from pydantic import BaseModel, Field
 
+from app.database import close_client, connect_db, initialize_database, next_id
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "web"
-DATABASE_PATH = Path(os.environ.get("HEALTHBOT_DB", ROOT / "data" / "healthbot.sqlite3"))
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 PASSWORD_ROUNDS = 310_000
 TOKEN_LIFETIME = timedelta(days=14)
 
 
-def connect_db() -> sqlite3.Connection:
-    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+def document_dict(document: dict | None) -> dict | None:
+    if document is None:
+        return None
+    return {key: value for key, value in document.items() if key != "_id"}
 
 
-def initialize_database() -> None:
-    with connect_db() as connection:
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                password_hash TEXT NOT NULL,
-                password_salt TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                is_admin INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS profiles (
-                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                age INTEGER,
-                gender TEXT NOT NULL DEFAULT '',
-                blood_type TEXT NOT NULL DEFAULT '',
-                height_cm REAL,
-                weight_kg REAL,
-                bmi REAL,
-                location TEXT NOT NULL DEFAULT '',
-                conditions TEXT NOT NULL DEFAULT '[]',
-                medications TEXT NOT NULL DEFAULT '[]',
-                appetite TEXT NOT NULL DEFAULT '',
-                daily_routine TEXT NOT NULL DEFAULT '',
-                family_history TEXT NOT NULL DEFAULT '',
-                prescriptions TEXT NOT NULL DEFAULT '[]',
-                profile_image TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS sessions (
-                token_hash TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                expires_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS measurements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                steps INTEGER,
-                active_minutes INTEGER,
-                sleep_hours REAL,
-                fasting_glucose REAL,
-                systolic_bp INTEGER,
-                diastolic_bp INTEGER,
-                recorded_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS reminders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                title TEXT NOT NULL,
-                scheduled_time TEXT NOT NULL,
-                instruction TEXT NOT NULL DEFAULT '',
-                active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS reminder_completions (
-                reminder_id INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
-                completed_on TEXT NOT NULL,
-                PRIMARY KEY (reminder_id, completed_on)
-            );
-            CREATE TABLE IF NOT EXISTS prescription_completions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                prescription_id TEXT NOT NULL,
-                scheduled_time TEXT NOT NULL,
-                completed_on TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                UNIQUE(user_id, prescription_id, scheduled_time, completed_on)
-            );
-            CREATE TABLE IF NOT EXISTS dataset_summary (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                record_count INTEGER NOT NULL,
-                diabetes_count INTEGER NOT NULL,
-                hypertension_count INTEGER NOT NULL,
-                average_age REAL NOT NULL,
-                average_bmi REAL NOT NULL,
-                imported_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS patients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                patient_id TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                age INTEGER NOT NULL,
-                gender TEXT NOT NULL DEFAULT '',
-                phone TEXT NOT NULL DEFAULT '',
-                email TEXT NOT NULL DEFAULT '',
-                blood_group TEXT NOT NULL DEFAULT '',
-                address TEXT NOT NULL DEFAULT '',
-                emergency_contact TEXT NOT NULL DEFAULT '',
-                chronic_conditions TEXT NOT NULL DEFAULT '[]',
-                allergies TEXT NOT NULL DEFAULT '[]',
-                current_medications TEXT NOT NULL DEFAULT '[]',
-                notes TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS patient_visits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                visit_date TEXT NOT NULL,
-                chief_complaint TEXT NOT NULL DEFAULT '',
-                diagnosis TEXT NOT NULL DEFAULT '',
-                systolic_bp INTEGER,
-                diastolic_bp INTEGER,
-                fasting_glucose REAL,
-                heart_rate INTEGER,
-                temperature REAL,
-                weight_kg REAL,
-                prescriptions TEXT NOT NULL DEFAULT '[]',
-                clinical_notes TEXT NOT NULL DEFAULT '',
-                next_followup TEXT,
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS admin_access_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                admin_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                target_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                action TEXT NOT NULL,
-                accessed_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_patients_user ON patients(user_id);
-            CREATE INDEX IF NOT EXISTS idx_visits_patient ON patient_visits(patient_id);
-            """
-        )
-        user_columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)")}
-        if "is_admin" not in user_columns:
-            connection.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
-        profile_columns = {row["name"] for row in connection.execute("PRAGMA table_info(profiles)")}
-        if "medications" not in profile_columns:
-            connection.execute("ALTER TABLE profiles ADD COLUMN medications TEXT NOT NULL DEFAULT '[]'")
-        if "blood_type" not in profile_columns:
-            connection.execute("ALTER TABLE profiles ADD COLUMN blood_type TEXT NOT NULL DEFAULT ''")
-        for column, declaration in {
-            "appetite": "TEXT NOT NULL DEFAULT ''",
-            "daily_routine": "TEXT NOT NULL DEFAULT ''",
-            "family_history": "TEXT NOT NULL DEFAULT ''",
-            "prescriptions": "TEXT NOT NULL DEFAULT '[]'",
-            "profile_image": "TEXT NOT NULL DEFAULT ''",
-        }.items():
-            if column not in profile_columns:
-                connection.execute(f"ALTER TABLE profiles ADD COLUMN {column} {declaration}")
+def insert_record(database: Database, collection: str, values: dict) -> dict:
+    document = {**values, "id": next_id(database, collection)}
+    database[collection].insert_one(document)
+    return document
 
 
 def utc_now() -> datetime:
@@ -192,42 +51,32 @@ def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
     return password_hash.hex(), salt.hex()
 
 
-def profile_dict(row: sqlite3.Row | None) -> dict | None:
-    if row is None:
-        return None
-    profile = dict(row)
-    profile["conditions"] = json.loads(profile.pop("conditions", "[]"))
-    profile["medications"] = json.loads(profile.pop("medications", "[]"))
-    profile["prescriptions"] = json.loads(profile.pop("prescriptions", "[]"))
-    return profile
+def profile_dict(row: dict | None) -> dict | None:
+    return document_dict(row)
 
 
-def patient_dict(row: sqlite3.Row | None) -> dict | None:
-    if row is None:
-        return None
-    patient = dict(row)
-    patient["chronic_conditions"] = json.loads(patient.pop("chronic_conditions", "[]"))
-    patient["allergies"] = json.loads(patient.pop("allergies", "[]"))
-    patient["current_medications"] = json.loads(patient.pop("current_medications", "[]"))
-    return patient
+def patient_dict(row: dict | None) -> dict | None:
+    return document_dict(row)
 
 
-def visit_dict(row: sqlite3.Row | None) -> dict | None:
-    if row is None:
-        return None
-    visit = dict(row)
-    visit["prescriptions"] = json.loads(visit.pop("prescriptions", "[]"))
-    return visit
+def visit_dict(row: dict | None) -> dict | None:
+    return document_dict(row)
 
 
-def create_access_token(connection: sqlite3.Connection, user_id: int) -> str:
+def patient_query(patient_id: str, user_id: int) -> dict:
+    selectors = [{"patient_id": patient_id}]
+    try:
+        selectors.append({"id": int(patient_id)})
+    except ValueError:
+        pass
+    return {"user_id": user_id, "$or": selectors}
+
+
+def create_access_token(database: Database, user_id: int) -> str:
     token = secrets.token_urlsafe(32)
     expires_at = (utc_now() + TOKEN_LIFETIME).isoformat()
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    connection.execute(
-        "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
-        (token_hash, user_id, expires_at),
-    )
+    database.sessions.insert_one({"token_hash": token_hash, "user_id": user_id, "expires_at": expires_at})
     return token
 
 
@@ -339,13 +188,11 @@ def authenticated_user(authorization: Annotated[str | None, Header()] = None) ->
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Please sign in.")
     token = authorization[7:]
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    with connect_db() as connection:
-        session = connection.execute(
-            "SELECT user_id, expires_at FROM sessions WHERE token_hash = ?", (token_hash,)
-        ).fetchone()
+    with connect_db() as database:
+        session = database.sessions.find_one({"token_hash": token_hash})
         if session is None or datetime.fromisoformat(session["expires_at"]) <= utc_now():
             if session is not None:
-                connection.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+                database.sessions.delete_one({"token_hash": token_hash})
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired. Please sign in again.")
         return int(session["user_id"])
 
@@ -354,8 +201,8 @@ CurrentUser = Annotated[int, Depends(authenticated_user)]
 
 
 def authenticated_admin(user_id: CurrentUser) -> int:
-    with connect_db() as connection:
-        user = connection.execute("SELECT is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
+    with connect_db() as database:
+        user = database.users.find_one({"id": user_id}, {"is_admin": 1})
     if user is None or not user["is_admin"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required.")
     return user_id
@@ -366,8 +213,11 @@ CurrentAdmin = Annotated[int, Depends(authenticated_admin)]
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    initialize_database()
-    yield
+    try:
+        initialize_database()
+        yield
+    finally:
+        close_client()
 
 
 app = FastAPI(title="Beluga Health", version="0.2.0", lifespan=lifespan)
@@ -400,7 +250,7 @@ def service_worker() -> FileResponse:
 
 @app.get("/api/health")
 def health_check() -> dict[str, str]:
-    return {"status": "ok", "storage": "local SQLite", "version": "0.2.0"}
+    return {"status": "ok", "storage": "MongoDB", "version": "0.2.0"}
 
 
 @app.get("/api/system/network-info")
@@ -430,22 +280,22 @@ def register(payload: AccountInput) -> dict:
     bmi = round(payload.weight_kg / ((payload.height_cm / 100) ** 2), 1) if payload.weight_kg and payload.height_cm else None
     now = utc_now().isoformat()
     try:
-        with connect_db() as connection:
-            cursor = connection.execute(
-                "INSERT INTO users (name, email, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, ?)",
-                (payload.name.strip(), email, password_hash, salt, now),
-            )
-            user_id = int(cursor.lastrowid)
-            connection.execute(
-                "INSERT INTO profiles (user_id, age, gender, blood_type, height_cm, weight_kg, bmi, location, conditions, medications, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (user_id, payload.age, payload.gender.strip(), payload.blood_type.strip(), payload.height_cm, payload.weight_kg, bmi,
-                 payload.location.strip(), json.dumps(payload.conditions), json.dumps(payload.medications), now),
-            )
-            token = create_access_token(connection, user_id)
-    except sqlite3.IntegrityError as error:
-        if "users.email" in str(error):
-            raise HTTPException(status_code=409, detail="An account already exists for this email.") from error
-        raise
+        with connect_db() as database:
+            user = insert_record(database, "users", {
+                "name": payload.name.strip(), "email": email, "password_hash": password_hash,
+                "password_salt": salt, "created_at": now, "is_admin": False,
+            })
+            user_id = user["id"]
+            database.profiles.insert_one({
+                "user_id": user_id, "age": payload.age, "gender": payload.gender.strip(),
+                "blood_type": payload.blood_type.strip(), "height_cm": payload.height_cm,
+                "weight_kg": payload.weight_kg, "bmi": bmi, "location": payload.location.strip(),
+                "conditions": payload.conditions, "medications": payload.medications,
+                "updated_at": now,
+            })
+            token = create_access_token(database, user_id)
+    except DuplicateKeyError as error:
+        raise HTTPException(status_code=409, detail="An account already exists for this email.") from error
     return {
         "access_token": token,
         "user": {"id": user_id, "name": payload.name.strip(), "email": email, "is_admin": False},
@@ -460,15 +310,15 @@ def register(payload: AccountInput) -> dict:
 @app.post("/api/login")
 def login(payload: LoginInput) -> dict:
     email = payload.email.strip().lower()
-    with connect_db() as connection:
-        user = connection.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    with connect_db() as database:
+        user = database.users.find_one({"email": email})
         if user is None:
             raise HTTPException(status_code=401, detail="Email or password is incorrect.")
         supplied_hash, _ = hash_password(payload.password, bytes.fromhex(user["password_salt"]))
         if not secrets.compare_digest(supplied_hash, user["password_hash"]):
             raise HTTPException(status_code=401, detail="Email or password is incorrect.")
-        token = create_access_token(connection, int(user["id"]))
-        profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user["id"],)).fetchone()
+        token = create_access_token(database, int(user["id"]))
+        profile = database.profiles.find_one({"user_id": user["id"]})
     return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"], "is_admin": bool(user["is_admin"])}, "profile": profile_dict(profile)}
 
 
@@ -493,28 +343,26 @@ def google_auth(payload: GoogleAuthInput) -> dict:
 
     if not email or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
         raise HTTPException(status_code=422, detail="Valid Gmail or email address is required.")
+    email = email.lower()
 
     now = utc_now().isoformat()
-    with connect_db() as connection:
-        user = connection.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    with connect_db() as database:
+        user = database.users.find_one({"email": email})
         if user is None:
             dummy_hash, salt = hash_password(secrets.token_urlsafe(24))
             display_name = name or email.split("@")[0]
-            cursor = connection.execute(
-                "INSERT INTO users (name, email, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, ?)",
-                (display_name, email, dummy_hash, salt, now),
-            )
-            user_id = int(cursor.lastrowid)
-            connection.execute(
-                "INSERT INTO profiles (user_id, updated_at) VALUES (?, ?)",
-                (user_id, now),
-            )
+            user = insert_record(database, "users", {
+                "name": display_name, "email": email, "password_hash": dummy_hash,
+                "password_salt": salt, "created_at": now, "is_admin": False,
+            })
+            user_id = user["id"]
+            database.profiles.insert_one({"user_id": user_id, "updated_at": now})
         else:
             user_id = int(user["id"])
             display_name = user["name"]
 
-        token = create_access_token(connection, user_id)
-        profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,)).fetchone()
+        token = create_access_token(database, user_id)
+        profile = database.profiles.find_one({"user_id": user_id})
 
     return {
         "access_token": token,
@@ -526,15 +374,15 @@ def google_auth(payload: GoogleAuthInput) -> dict:
 @app.post("/api/logout", status_code=204)
 def logout(user_id: CurrentUser, authorization: Annotated[str, Header()]) -> None:
     token_hash = hashlib.sha256(authorization[7:].encode()).hexdigest()
-    with connect_db() as connection:
-        connection.execute("DELETE FROM sessions WHERE token_hash = ? AND user_id = ?", (token_hash, user_id))
+    with connect_db() as database:
+        database.sessions.delete_one({"token_hash": token_hash, "user_id": user_id})
 
 
 @app.get("/api/me")
 def get_me(user_id: CurrentUser) -> dict:
-    with connect_db() as connection:
-        user = connection.execute("SELECT id, name, email, is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
-        profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,)).fetchone()
+    with connect_db() as database:
+        user = database.users.find_one({"id": user_id}, {"_id": 0, "id": 1, "name": 1, "email": 1, "is_admin": 1})
+        profile = database.profiles.find_one({"user_id": user_id})
     result = dict(user)
     result["is_admin"] = bool(result["is_admin"])
     return {"user": result, "profile": profile_dict(profile)}
@@ -543,17 +391,22 @@ def get_me(user_id: CurrentUser) -> dict:
 @app.put("/api/profile")
 def update_profile(payload: ProfileInput, user_id: CurrentUser) -> dict:
     bmi = round(payload.weight_kg / ((payload.height_cm / 100) ** 2), 1) if payload.weight_kg and payload.height_cm else None
-    with connect_db() as connection:
-        connection.execute("UPDATE users SET name = ? WHERE id = ?", (payload.name.strip(), user_id))
-        connection.execute(
-              "UPDATE profiles SET age = ?, gender = ?, blood_type = ?, height_cm = ?, weight_kg = ?, bmi = ?, location = ?, conditions = ?, medications = ?, appetite = ?, daily_routine = ?, family_history = ?, prescriptions = ?, profile_image = ?, updated_at = ? WHERE user_id = ?",
-            (payload.age, payload.gender.strip(), payload.blood_type.strip(), payload.height_cm, payload.weight_kg, bmi,
-               payload.location.strip(), json.dumps(payload.conditions), json.dumps(payload.medications),
-               payload.appetite.strip(), payload.daily_routine.strip(), payload.family_history.strip(),
-               json.dumps([item.model_dump() for item in payload.prescriptions]), payload.profile_image,
-               utc_now().isoformat(), user_id),
+    with connect_db() as database:
+        database.users.update_one({"id": user_id}, {"$set": {"name": payload.name.strip()}})
+        database.profiles.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "age": payload.age, "gender": payload.gender.strip(), "blood_type": payload.blood_type.strip(),
+                "height_cm": payload.height_cm, "weight_kg": payload.weight_kg, "bmi": bmi,
+                "location": payload.location.strip(), "conditions": payload.conditions,
+                "medications": payload.medications, "appetite": payload.appetite.strip(),
+                "daily_routine": payload.daily_routine.strip(), "family_history": payload.family_history.strip(),
+                "prescriptions": [item.model_dump() for item in payload.prescriptions],
+                "profile_image": payload.profile_image, "updated_at": utc_now().isoformat(),
+            }},
+            upsert=True,
         )
-        profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,)).fetchone()
+        profile = database.profiles.find_one({"user_id": user_id})
     return profile_dict(profile) or {}
 
 
@@ -562,34 +415,32 @@ def add_measurement(payload: MeasurementInput, user_id: CurrentUser) -> dict:
     values = payload.model_dump(exclude_none=True)
     if not values:
         raise HTTPException(status_code=422, detail="Add at least one measurement.")
-    columns = list(values)
-    with connect_db() as connection:
-        cursor = connection.execute(
-            f"INSERT INTO measurements (user_id, {', '.join(columns)}, recorded_at) VALUES ({', '.join('?' for _ in range(len(columns) + 2))})",
-            [user_id, *values.values(), utc_now().isoformat()],
-        )
-        measurement = connection.execute("SELECT * FROM measurements WHERE id = ?", (cursor.lastrowid,)).fetchone()
-    return dict(measurement)
+    with connect_db() as database:
+        measurement = insert_record(database, "measurements", {
+            "user_id": user_id, **values, "recorded_at": utc_now().isoformat(),
+        })
+    return measurement
 
 
 @app.get("/api/dashboard")
 def dashboard(user_id: CurrentUser) -> dict:
     today = date.today().isoformat()
-    with connect_db() as connection:
-        profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,)).fetchone()
-        user = connection.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()
-        measurements = connection.execute(
-            "SELECT * FROM measurements WHERE user_id = ? ORDER BY recorded_at DESC LIMIT 7", (user_id,)
-        ).fetchall()
-        reminders = connection.execute(
-            """SELECT r.*, EXISTS(SELECT 1 FROM reminder_completions c
-               WHERE c.reminder_id = r.id AND c.completed_on = ?) AS completed_today
-               FROM reminders r WHERE r.user_id = ? AND r.active = 1 ORDER BY r.scheduled_time""",
-            (today, user_id),
-        ).fetchall()
-        patients_count = connection.execute("SELECT COUNT(*) AS total FROM patients WHERE user_id = ?", (user_id,)).fetchone()["total"]
-        dataset = connection.execute("SELECT * FROM dataset_summary WHERE id = 1").fetchone()
-    latest = dict(measurements[0]) if measurements else None
+    with connect_db() as database:
+        profile = database.profiles.find_one({"user_id": user_id})
+        user = database.users.find_one({"id": user_id}, {"name": 1})
+        measurements = list(database.measurements.find({"user_id": user_id}).sort("recorded_at", -1).limit(7))
+        reminders = list(database.reminders.find({"user_id": user_id, "active": True}).sort("scheduled_time", 1))
+        completed_ids = {
+            item["reminder_id"] for item in database.reminder_completions.find(
+                {"reminder_id": {"$in": [item["id"] for item in reminders]}, "completed_on": today},
+                {"reminder_id": 1},
+            )
+        } if reminders else set()
+        for reminder in reminders:
+            reminder["completed_today"] = reminder["id"] in completed_ids
+        patients_count = database.patients.count_documents({"user_id": user_id})
+        dataset = database.dataset_summary.find_one({"id": 1})
+    latest = document_dict(measurements[0]) if measurements else None
     flags = []
     if latest:
         if latest["fasting_glucose"] is not None and latest["fasting_glucose"] >= 126:
@@ -598,60 +449,51 @@ def dashboard(user_id: CurrentUser) -> dict:
             flags.append("This blood pressure reading is elevated under common adult guidance. Repeat it correctly and discuss it with a clinician.")
     return {
         "name": user["name"], "profile": profile_dict(profile), "latest_measurement": latest,
-        "measurements": [dict(row) for row in measurements], "reminders": [dict(row) for row in reminders],
-        "patients_count": patients_count, "dataset": dict(dataset) if dataset else None, "reading_notes": flags,
+        "measurements": [document_dict(row) for row in measurements],
+        "reminders": [document_dict(row) for row in reminders],
+        "patients_count": patients_count, "dataset": document_dict(dataset), "reading_notes": flags,
     }
 
 
 @app.get("/api/admin/users")
 def admin_list_users(admin_id: CurrentAdmin) -> list[dict]:
-    with connect_db() as connection:
-        connection.execute(
-            "INSERT INTO admin_access_log (admin_user_id, action, accessed_at) VALUES (?, ?, ?)",
-            (admin_id, "list_users", utc_now().isoformat()),
-        )
-        users = connection.execute(
-            "SELECT id, name, email, created_at FROM users ORDER BY created_at DESC"
-        ).fetchall()
-    return [dict(user) for user in users]
+    with connect_db() as database:
+        insert_record(database, "admin_access_log", {
+            "admin_user_id": admin_id, "action": "list_users", "accessed_at": utc_now().isoformat(),
+        })
+        users = database.users.find({}, {"_id": 0, "id": 1, "name": 1, "email": 1, "created_at": 1}).sort("created_at", -1)
+    return list(users)
 
 
 @app.get("/api/admin/users/{target_user_id}")
 def admin_get_user(target_user_id: int, admin_id: CurrentAdmin) -> dict:
-    with connect_db() as connection:
-        user = connection.execute(
-            "SELECT id, name, email, created_at FROM users WHERE id = ?", (target_user_id,)
-        ).fetchone()
+    with connect_db() as database:
+        user = database.users.find_one(
+            {"id": target_user_id}, {"_id": 0, "id": 1, "name": 1, "email": 1, "created_at": 1}
+        )
         if user is None:
             raise HTTPException(status_code=404, detail="Account not found.")
-        profile = connection.execute("SELECT * FROM profiles WHERE user_id = ?", (target_user_id,)).fetchone()
-        measurements = connection.execute(
-            "SELECT * FROM measurements WHERE user_id = ? ORDER BY recorded_at DESC", (target_user_id,)
-        ).fetchall()
-        reminders = connection.execute(
-            "SELECT * FROM reminders WHERE user_id = ? ORDER BY scheduled_time", (target_user_id,)
-        ).fetchall()
-        patients = connection.execute(
-            "SELECT * FROM patients WHERE user_id = ? ORDER BY updated_at DESC", (target_user_id,)
-        ).fetchall()
+        profile = database.profiles.find_one({"user_id": target_user_id})
+        measurements = list(database.measurements.find({"user_id": target_user_id}).sort("recorded_at", -1))
+        reminders = list(database.reminders.find({"user_id": target_user_id}).sort("scheduled_time", 1))
+        patients = list(database.patients.find({"user_id": target_user_id}).sort("updated_at", -1))
         patient_records = []
         for patient_row in patients:
             patient = patient_dict(patient_row)
-            visits = connection.execute(
-                "SELECT * FROM patient_visits WHERE patient_id = ? AND user_id = ? ORDER BY visit_date DESC",
-                (patient_row["id"], target_user_id),
-            ).fetchall()
+            visits = database.patient_visits.find(
+                {"patient_id": patient_row["id"], "user_id": target_user_id}
+            ).sort("visit_date", -1)
             patient["visits"] = [visit_dict(visit) for visit in visits]
             patient_records.append(patient)
-        connection.execute(
-            "INSERT INTO admin_access_log (admin_user_id, target_user_id, action, accessed_at) VALUES (?, ?, ?, ?)",
-            (admin_id, target_user_id, "view_user_records", utc_now().isoformat()),
-        )
+        insert_record(database, "admin_access_log", {
+            "admin_user_id": admin_id, "target_user_id": target_user_id,
+            "action": "view_user_records", "accessed_at": utc_now().isoformat(),
+        })
     return {
-        "user": dict(user),
+        "user": user,
         "profile": profile_dict(profile),
-        "measurements": [dict(row) for row in measurements],
-        "reminders": [dict(row) for row in reminders],
+        "measurements": [document_dict(row) for row in measurements],
+        "reminders": [document_dict(row) for row in reminders],
         "patients": patient_records,
     }
 
@@ -662,87 +504,50 @@ def admin_get_user(target_user_id: int, admin_id: CurrentAdmin) -> dict:
 
 @app.get("/api/patients")
 def list_patients(user_id: CurrentUser, q: str | None = Query(default=None)) -> list[dict]:
-    with connect_db() as connection:
-        if q and q.strip():
-            query_str = f"%{q.strip().lower()}%"
-            rows = connection.execute(
-                """
-                SELECT p.*,
-                       COUNT(v.id) AS visit_count,
-                       MAX(v.visit_date) AS last_visit_date
-                FROM patients p
-                LEFT JOIN patient_visits v ON v.patient_id = p.id
-                WHERE p.user_id = ?
-                  AND (
-                    LOWER(p.name) LIKE ?
-                    OR LOWER(p.patient_id) LIKE ?
-                    OR LOWER(p.phone) LIKE ?
-                    OR LOWER(p.chronic_conditions) LIKE ?
-                  )
-                GROUP BY p.id
-                ORDER BY p.updated_at DESC
-                """,
-                (user_id, query_str, query_str, query_str, query_str),
-            ).fetchall()
-        else:
-            rows = connection.execute(
-                """
-                SELECT p.*,
-                       COUNT(v.id) AS visit_count,
-                       MAX(v.visit_date) AS last_visit_date
-                FROM patients p
-                LEFT JOIN patient_visits v ON v.patient_id = p.id
-                WHERE p.user_id = ?
-                GROUP BY p.id
-                ORDER BY p.updated_at DESC
-                """,
-                (user_id,),
-            ).fetchall()
-
-    result = []
-    for row in rows:
-        p = patient_dict(row)
-        p["visit_count"] = row["visit_count"]
-        p["last_visit_date"] = row["last_visit_date"]
-        result.append(p)
+    query = {"user_id": user_id}
+    if q and q.strip():
+        pattern = re.escape(q.strip())
+        query["$or"] = [
+            {field: {"$regex": pattern, "$options": "i"}}
+            for field in ("name", "patient_id", "phone", "chronic_conditions")
+        ]
+    with connect_db() as database:
+        rows = list(database.patients.find(query).sort("updated_at", -1))
+        result = []
+        for row in rows:
+            visits = list(database.patient_visits.find({"patient_id": row["id"]}).sort("visit_date", -1).limit(1))
+            patient = patient_dict(row)
+            patient["visit_count"] = database.patient_visits.count_documents({"patient_id": row["id"]})
+            patient["last_visit_date"] = visits[0]["visit_date"] if visits else None
+            result.append(patient)
     return result
 
 
 @app.post("/api/patients", status_code=201)
 def create_patient(payload: PatientInput, user_id: CurrentUser) -> dict:
     now = utc_now().isoformat()
-    with connect_db() as connection:
+    with connect_db() as database:
         pid = payload.patient_id.strip() if payload.patient_id and payload.patient_id.strip() else None
         if not pid:
-            count = connection.execute("SELECT COUNT(*) AS total FROM patients").fetchone()["total"]
+            count = database.patients.count_documents({})
             candidate_id = f"PAT-{1001 + count}"
-            while connection.execute("SELECT id FROM patients WHERE patient_id = ?", (candidate_id,)).fetchone():
+            while database.patients.find_one({"patient_id": candidate_id}):
                 count += 1
                 candidate_id = f"PAT-{1001 + count}"
             pid = candidate_id
 
         try:
-            cursor = connection.execute(
-                """
-                INSERT INTO patients (
-                    user_id, patient_id, name, age, gender, phone, email, blood_group,
-                    address, emergency_contact, chronic_conditions, allergies,
-                    current_medications, notes, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    user_id, pid, payload.name.strip(), payload.age, payload.gender.strip(),
-                    payload.phone.strip(), payload.email.strip().lower(), payload.blood_group.strip(),
-                    payload.address.strip(), payload.emergency_contact.strip(),
-                    json.dumps(payload.chronic_conditions), json.dumps(payload.allergies),
-                    json.dumps(payload.current_medications), payload.notes.strip(), now, now,
-                ),
-            )
-            row = connection.execute("SELECT * FROM patients WHERE id = ?", (cursor.lastrowid,)).fetchone()
-        except sqlite3.IntegrityError as error:
-            if "patients.patient_id" in str(error):
-                raise HTTPException(status_code=409, detail=f"A patient with ID '{pid}' already exists.") from error
-            raise
+            row = insert_record(database, "patients", {
+                "user_id": user_id, "patient_id": pid, "name": payload.name.strip(), "age": payload.age,
+                "gender": payload.gender.strip(), "phone": payload.phone.strip(),
+                "email": payload.email.strip().lower(), "blood_group": payload.blood_group.strip(),
+                "address": payload.address.strip(), "emergency_contact": payload.emergency_contact.strip(),
+                "chronic_conditions": payload.chronic_conditions, "allergies": payload.allergies,
+                "current_medications": payload.current_medications, "notes": payload.notes.strip(),
+                "created_at": now, "updated_at": now,
+            })
+        except DuplicateKeyError as error:
+            raise HTTPException(status_code=409, detail=f"A patient with ID '{pid}' already exists.") from error
 
     p = patient_dict(row)
     p["visit_count"] = 0
@@ -753,17 +558,11 @@ def create_patient(payload: PatientInput, user_id: CurrentUser) -> dict:
 
 @app.get("/api/patients/{patient_id}")
 def get_patient(patient_id: str, user_id: CurrentUser) -> dict:
-    with connect_db() as connection:
-        row = connection.execute(
-            "SELECT * FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
-            (patient_id, patient_id, user_id),
-        ).fetchone()
+    with connect_db() as database:
+        row = database.patients.find_one(patient_query(patient_id, user_id))
         if row is None:
             raise HTTPException(status_code=404, detail="Patient not found.")
-        visits = connection.execute(
-            "SELECT * FROM patient_visits WHERE patient_id = ? ORDER BY visit_date DESC, id DESC",
-            (row["id"],),
-        ).fetchall()
+        visits = list(database.patient_visits.find({"patient_id": row["id"]}).sort([("visit_date", -1), ("id", -1)]))
 
     patient = patient_dict(row)
     patient["visits"] = [visit_dict(v) for v in visits]
@@ -775,43 +574,27 @@ def get_patient(patient_id: str, user_id: CurrentUser) -> dict:
 @app.put("/api/patients/{patient_id}")
 def update_patient(patient_id: str, payload: PatientInput, user_id: CurrentUser) -> dict:
     now = utc_now().isoformat()
-    with connect_db() as connection:
-        existing = connection.execute(
-            "SELECT id, patient_id FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
-            (patient_id, patient_id, user_id),
-        ).fetchone()
+    with connect_db() as database:
+        existing = database.patients.find_one(patient_query(patient_id, user_id))
         if existing is None:
             raise HTTPException(status_code=404, detail="Patient not found.")
 
         target_pid = payload.patient_id.strip() if payload.patient_id and payload.patient_id.strip() else existing["patient_id"]
         try:
-            connection.execute(
-                """
-                UPDATE patients SET
-                    patient_id = ?, name = ?, age = ?, gender = ?, phone = ?, email = ?,
-                    blood_group = ?, address = ?, emergency_contact = ?, chronic_conditions = ?,
-                    allergies = ?, current_medications = ?, notes = ?, updated_at = ?
-                WHERE id = ? AND user_id = ?
-                """,
-                (
-                    target_pid, payload.name.strip(), payload.age, payload.gender.strip(),
-                    payload.phone.strip(), payload.email.strip().lower(), payload.blood_group.strip(),
-                    payload.address.strip(), payload.emergency_contact.strip(),
-                    json.dumps(payload.chronic_conditions), json.dumps(payload.allergies),
-                    json.dumps(payload.current_medications), payload.notes.strip(), now,
-                    existing["id"], user_id,
-                ),
-            )
-        except sqlite3.IntegrityError as error:
-            if "patients.patient_id" in str(error):
-                raise HTTPException(status_code=409, detail=f"A patient with ID '{target_pid}' already exists.") from error
-            raise
+            database.patients.update_one({"id": existing["id"]}, {"$set": {
+                "patient_id": target_pid, "name": payload.name.strip(), "age": payload.age,
+                "gender": payload.gender.strip(), "phone": payload.phone.strip(),
+                "email": payload.email.strip().lower(), "blood_group": payload.blood_group.strip(),
+                "address": payload.address.strip(), "emergency_contact": payload.emergency_contact.strip(),
+                "chronic_conditions": payload.chronic_conditions, "allergies": payload.allergies,
+                "current_medications": payload.current_medications, "notes": payload.notes.strip(),
+                "updated_at": now,
+            }})
+        except DuplicateKeyError as error:
+            raise HTTPException(status_code=409, detail=f"A patient with ID '{target_pid}' already exists.") from error
 
-        row = connection.execute("SELECT * FROM patients WHERE id = ?", (existing["id"],)).fetchone()
-        visits = connection.execute(
-            "SELECT * FROM patient_visits WHERE patient_id = ? ORDER BY visit_date DESC, id DESC",
-            (existing["id"],),
-        ).fetchall()
+        row = database.patients.find_one({"id": existing["id"]})
+        visits = list(database.patient_visits.find({"patient_id": existing["id"]}).sort([("visit_date", -1), ("id", -1)]))
 
     p = patient_dict(row)
     p["visits"] = [visit_dict(v) for v in visits]
@@ -822,46 +605,33 @@ def update_patient(patient_id: str, payload: PatientInput, user_id: CurrentUser)
 
 @app.delete("/api/patients/{patient_id}", status_code=204)
 def delete_patient(patient_id: str, user_id: CurrentUser) -> None:
-    with connect_db() as connection:
-        result = connection.execute(
-            "DELETE FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
-            (patient_id, patient_id, user_id),
-        )
-        if result.rowcount == 0:
+    with connect_db() as database:
+        patient = database.patients.find_one(patient_query(patient_id, user_id), {"id": 1})
+        if patient is None:
             raise HTTPException(status_code=404, detail="Patient not found.")
+        database.patient_visits.delete_many({"patient_id": patient["id"]})
+        database.patients.delete_one({"id": patient["id"], "user_id": user_id})
 
 
 @app.post("/api/patients/{patient_id}/visits", status_code=201)
 def add_patient_visit(patient_id: str, payload: VisitInput, user_id: CurrentUser) -> dict:
     now = utc_now().isoformat()
     visit_date = payload.visit_date.strip() if payload.visit_date and payload.visit_date.strip() else date.today().isoformat()
-    with connect_db() as connection:
-        patient = connection.execute(
-            "SELECT id FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
-            (patient_id, patient_id, user_id),
-        ).fetchone()
+    with connect_db() as database:
+        patient = database.patients.find_one(patient_query(patient_id, user_id), {"id": 1})
         if patient is None:
             raise HTTPException(status_code=404, detail="Patient not found.")
 
-        cursor = connection.execute(
-            """
-            INSERT INTO patient_visits (
-                patient_id, user_id, visit_date, chief_complaint, diagnosis,
-                systolic_bp, diastolic_bp, fasting_glucose, heart_rate,
-                temperature, weight_kg, prescriptions, clinical_notes,
-                next_followup, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                patient["id"], user_id, visit_date, payload.chief_complaint.strip(),
-                payload.diagnosis.strip(), payload.systolic_bp, payload.diastolic_bp,
-                payload.fasting_glucose, payload.heart_rate, payload.temperature,
-                payload.weight_kg, json.dumps(payload.prescriptions),
-                payload.clinical_notes.strip(), payload.next_followup, now,
-            ),
-        )
-        connection.execute("UPDATE patients SET updated_at = ? WHERE id = ?", (now, patient["id"]))
-        row = connection.execute("SELECT * FROM patient_visits WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        row = insert_record(database, "patient_visits", {
+            "patient_id": patient["id"], "user_id": user_id, "visit_date": visit_date,
+            "chief_complaint": payload.chief_complaint.strip(), "diagnosis": payload.diagnosis.strip(),
+            "systolic_bp": payload.systolic_bp, "diastolic_bp": payload.diastolic_bp,
+            "fasting_glucose": payload.fasting_glucose, "heart_rate": payload.heart_rate,
+            "temperature": payload.temperature, "weight_kg": payload.weight_kg,
+            "prescriptions": payload.prescriptions, "clinical_notes": payload.clinical_notes.strip(),
+            "next_followup": payload.next_followup, "created_at": now,
+        })
+        database.patients.update_one({"id": patient["id"]}, {"$set": {"updated_at": now}})
 
     return visit_dict(row)
 
@@ -869,55 +639,42 @@ def add_patient_visit(patient_id: str, payload: VisitInput, user_id: CurrentUser
 @app.put("/api/patients/{patient_id}/visits/{visit_id}")
 def update_patient_visit(patient_id: str, visit_id: int, payload: VisitInput, user_id: CurrentUser) -> dict:
     visit_date = payload.visit_date.strip() if payload.visit_date and payload.visit_date.strip() else date.today().isoformat()
-    with connect_db() as connection:
-        patient = connection.execute(
-            "SELECT id FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
-            (patient_id, patient_id, user_id),
-        ).fetchone()
+    with connect_db() as database:
+        patient = database.patients.find_one(patient_query(patient_id, user_id), {"id": 1})
         if patient is None:
             raise HTTPException(status_code=404, detail="Patient not found.")
 
-        result = connection.execute(
-            """
-            UPDATE patient_visits SET
-                visit_date = ?, chief_complaint = ?, diagnosis = ?,
-                systolic_bp = ?, diastolic_bp = ?, fasting_glucose = ?,
-                heart_rate = ?, temperature = ?, weight_kg = ?,
-                prescriptions = ?, clinical_notes = ?, next_followup = ?
-            WHERE id = ? AND patient_id = ? AND user_id = ?
-            """,
-            (
-                visit_date, payload.chief_complaint.strip(), payload.diagnosis.strip(),
-                payload.systolic_bp, payload.diastolic_bp, payload.fasting_glucose,
-                payload.heart_rate, payload.temperature, payload.weight_kg,
-                json.dumps(payload.prescriptions), payload.clinical_notes.strip(),
-                payload.next_followup, visit_id, patient["id"], user_id,
-            ),
+        result = database.patient_visits.update_one(
+            {"id": visit_id, "patient_id": patient["id"], "user_id": user_id},
+            {"$set": {
+                "visit_date": visit_date, "chief_complaint": payload.chief_complaint.strip(),
+                "diagnosis": payload.diagnosis.strip(), "systolic_bp": payload.systolic_bp,
+                "diastolic_bp": payload.diastolic_bp, "fasting_glucose": payload.fasting_glucose,
+                "heart_rate": payload.heart_rate, "temperature": payload.temperature,
+                "weight_kg": payload.weight_kg, "prescriptions": payload.prescriptions,
+                "clinical_notes": payload.clinical_notes.strip(), "next_followup": payload.next_followup,
+            }},
         )
-        if result.rowcount == 0:
+        if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Visit record not found.")
 
-        connection.execute("UPDATE patients SET updated_at = ? WHERE id = ?", (utc_now().isoformat(), patient["id"]))
-        row = connection.execute("SELECT * FROM patient_visits WHERE id = ?", (visit_id,)).fetchone()
+        database.patients.update_one({"id": patient["id"]}, {"$set": {"updated_at": utc_now().isoformat()}})
+        row = database.patient_visits.find_one({"id": visit_id})
 
     return visit_dict(row)
 
 
 @app.delete("/api/patients/{patient_id}/visits/{visit_id}", status_code=204)
 def delete_patient_visit(patient_id: str, visit_id: int, user_id: CurrentUser) -> None:
-    with connect_db() as connection:
-        patient = connection.execute(
-            "SELECT id FROM patients WHERE (id = ? OR patient_id = ?) AND user_id = ?",
-            (patient_id, patient_id, user_id),
-        ).fetchone()
+    with connect_db() as database:
+        patient = database.patients.find_one(patient_query(patient_id, user_id), {"id": 1})
         if patient is None:
             raise HTTPException(status_code=404, detail="Patient not found.")
 
-        result = connection.execute(
-            "DELETE FROM patient_visits WHERE id = ? AND patient_id = ? AND user_id = ?",
-            (visit_id, patient["id"], user_id),
+        result = database.patient_visits.delete_one(
+            {"id": visit_id, "patient_id": patient["id"], "user_id": user_id}
         )
-        if result.rowcount == 0:
+        if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Visit record not found.")
 
 
@@ -928,36 +685,40 @@ def delete_patient_visit(patient_id: str, visit_id: int, user_id: CurrentUser) -
 @app.get("/api/reminders")
 def list_reminders(user_id: CurrentUser) -> list[dict]:
     today = date.today().isoformat()
-    with connect_db() as connection:
-        rows = connection.execute(
-            """SELECT r.*, EXISTS(SELECT 1 FROM reminder_completions c
-               WHERE c.reminder_id = r.id AND c.completed_on = ?) AS completed_today
-               FROM reminders r WHERE r.user_id = ? AND r.active = 1 ORDER BY r.scheduled_time""",
-            (today, user_id),
-        ).fetchall()
-    return [dict(row) for row in rows]
+    with connect_db() as database:
+        rows = list(database.reminders.find({"user_id": user_id, "active": True}).sort("scheduled_time", 1))
+        completed_ids = {
+            item["reminder_id"] for item in database.reminder_completions.find(
+                {"reminder_id": {"$in": [row["id"] for row in rows]}, "completed_on": today},
+                {"reminder_id": 1},
+            )
+        } if rows else set()
+        for row in rows:
+            row["completed_today"] = row["id"] in completed_ids
+    return [document_dict(row) for row in rows]
 
 
 @app.post("/api/reminders", status_code=201)
 def add_reminder(payload: ReminderInput, user_id: CurrentUser) -> dict:
     with connect_db() as connection:
-        cursor = connection.execute(
-            "INSERT INTO reminders (user_id, title, scheduled_time, instruction, created_at) VALUES (?, ?, ?, ?, ?)",
-            (user_id, payload.title.strip(), payload.scheduled_time, payload.instruction.strip(), utc_now().isoformat()),
-        )
-        row = connection.execute("SELECT * FROM reminders WHERE id = ?", (cursor.lastrowid,)).fetchone()
-    return dict(row)
+        row = insert_record(connection, "reminders", {
+            "user_id": user_id, "title": payload.title.strip(), "scheduled_time": payload.scheduled_time,
+            "instruction": payload.instruction.strip(), "active": True,
+            "created_at": utc_now().isoformat(),
+        })
+    return row
 
 
 @app.post("/api/reminders/{reminder_id}/complete", status_code=204)
 def complete_reminder(reminder_id: int, user_id: CurrentUser) -> None:
-    with connect_db() as connection:
-        reminder = connection.execute("SELECT id FROM reminders WHERE id = ? AND user_id = ? AND active = 1", (reminder_id, user_id)).fetchone()
+    with connect_db() as database:
+        reminder = database.reminders.find_one({"id": reminder_id, "user_id": user_id, "active": True})
         if reminder is None:
             raise HTTPException(status_code=404, detail="Reminder not found.")
-        connection.execute(
-            "INSERT OR IGNORE INTO reminder_completions (reminder_id, completed_on) VALUES (?, ?)",
-            (reminder_id, date.today().isoformat()),
+        database.reminder_completions.update_one(
+            {"reminder_id": reminder_id, "completed_on": date.today().isoformat()},
+            {"$setOnInsert": {"user_id": user_id}},
+            upsert=True,
         )
 
 
@@ -973,11 +734,9 @@ def complete_prescription_intake(
     if abs((completed_on - date.today()).days) > 1:
         raise HTTPException(status_code=422, detail="Completion date must be today in your local timezone.")
 
-    with connect_db() as connection:
-        profile = connection.execute(
-            "SELECT prescriptions FROM profiles WHERE user_id = ?", (user_id,)
-        ).fetchone()
-        prescriptions = json.loads(profile["prescriptions"] if profile else "[]")
+    with connect_db() as database:
+        profile = database.profiles.find_one({"user_id": user_id}, {"prescriptions": 1})
+        prescriptions = profile.get("prescriptions", []) if profile else []
         valid_intake = any(
             item.get("id") == payload.prescription_id
             and payload.scheduled_time in item.get("intake_times", [])
@@ -985,26 +744,27 @@ def complete_prescription_intake(
         )
         if not valid_intake:
             raise HTTPException(status_code=404, detail="Prescription schedule not found.")
-        connection.execute(
-            """INSERT OR IGNORE INTO prescription_completions
-               (user_id, prescription_id, scheduled_time, completed_on, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (
-                user_id,
-                payload.prescription_id,
-                payload.scheduled_time,
-                payload.completed_on,
-                utc_now().isoformat(),
-            ),
+        database.prescription_completions.update_one(
+            {
+                "user_id": user_id,
+                "prescription_id": payload.prescription_id,
+                "scheduled_time": payload.scheduled_time,
+                "completed_on": payload.completed_on,
+            },
+            {"$setOnInsert": {
+                "id": next_id(database, "prescription_completions"),
+                "created_at": utc_now().isoformat(),
+            }},
+            upsert=True,
         )
     return {"completed": True, "completed_on": payload.completed_on}
 
 
 @app.delete("/api/reminders/{reminder_id}", status_code=204)
 def delete_reminder(reminder_id: int, user_id: CurrentUser) -> None:
-    with connect_db() as connection:
-        result = connection.execute("DELETE FROM reminders WHERE id = ? AND user_id = ?", (reminder_id, user_id))
-        if result.rowcount == 0:
+    with connect_db() as database:
+        result = database.reminders.delete_one({"id": reminder_id, "user_id": user_id})
+        if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Reminder not found.")
 
 
