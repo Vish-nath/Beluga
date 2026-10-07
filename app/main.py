@@ -1010,4 +1010,7 @@ def delete_reminder(reminder_id: int, user_id: CurrentUser) -> None:
 
 @app.get("/{path:path}")
 def frontend_fallback(path: str) -> FileResponse:
+    file_path = (STATIC_DIR / path).resolve()
+    if file_path.is_file() and STATIC_DIR in file_path.parents:
+        return FileResponse(file_path)
     return FileResponse(STATIC_DIR / "index.html")

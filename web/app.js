@@ -25,7 +25,7 @@ const icons = {
   calendar: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
 };
 
-const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (character) => ({
+const escapeHtml = (value = "") => String(value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 }[character]));
 
@@ -119,7 +119,13 @@ function navItem(page, label, icon) {
 }
 
 function shell(content) {
-  const initials = (currentUser?.name || "U").split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
+  const initials = (currentUser?.name?.trim() || "U")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "U";
   app.innerHTML = `
     <div class="app-shell">
       <aside class="sidebar">
@@ -231,7 +237,15 @@ async function renderPatients(query = "") {
   let searchDebounce;
   searchInput.addEventListener("input", (e) => {
     clearTimeout(searchDebounce);
-    searchDebounce = setTimeout(() => renderPatients(e.target.value.trim()), 300);
+    const val = e.target.value;
+    searchDebounce = setTimeout(async () => {
+      await renderPatients(val.trim());
+      const newSearchInput = document.querySelector("#patient-search");
+      if (newSearchInput) {
+        newSearchInput.focus();
+        newSearchInput.setSelectionRange(newSearchInput.value.length, newSearchInput.value.length);
+      }
+    }, 300);
   });
 
   document.querySelectorAll("[data-patient-id]").forEach(card => {
@@ -583,7 +597,7 @@ async function renderOverview() {
 
     <section class="overview-grid">
       <article class="section-panel trend-panel"><div class="section-title"><div><span class="eyebrow">RECENT CHECK-INS</span><h2>Personal Health readings</h2></div><button class="inline-action" data-page="measurements">See log ${icons.arrow}</button></div>
-        ${readings.length ? `<div class="reading-table"><div class="reading-row reading-head"><span>Date</span><span>Glucose</span><span>Blood pressure</span></div>${readings.slice(0, 5).map((reading) => `<div class="reading-row"><span>${new Date(reading.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span><span>${reading.fasting_glucose == null ? "—" : `${reading.fasting_glucose} <small>mg/dL</small>`}</span><span>${reading.systolic_bp == null ? "—" : `${reading.systolic_bp}/${reading.diastolic_bp} <small>mmHg</small>`}</span></div>`).join("")}</div>` : `<div class="empty-state"><div class="empty-mark">${icons.chart}</div><strong>No personal check-ins yet</strong><button class="text-button" data-action="log">Add check-in ${icons.arrow}</button></div>`}
+        ${readings.length ? `<div class="reading-table"><div class="reading-row reading-head"><span>Date</span><span>Glucose</span><span>Blood pressure</span></div>${readings.slice(0, 5).map((reading) => `<div class="reading-row"><span>${new Date(reading.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span><span>${reading.fasting_glucose == null ? "—" : `${reading.fasting_glucose} <small>mg/dL</small>`}</span><span>${reading.systolic_bp != null && reading.diastolic_bp != null ? `${reading.systolic_bp}/${reading.diastolic_bp} <small>mmHg</small>` : (reading.systolic_bp ?? reading.diastolic_bp ?? "—")}</span></div>`).join("")}</div>` : `<div class="empty-state"><div class="empty-mark">${icons.chart}</div><strong>No personal check-ins yet</strong><button class="text-button" data-action="log">Add check-in ${icons.arrow}</button></div>`}
       </article>
       <article class="section-panel reminder-panel"><div class="section-title"><div><span class="eyebrow">DAILY ROUTINE</span><h2>Today's reminders</h2></div><button class="icon-button" data-action="new-reminder" aria-label="Add reminder">${icons.plus}</button></div>
         ${reminders.length ? `<div class="reminder-list">${reminders.slice(0, 4).map(reminderRow).join("")}</div>` : `<div class="empty-state compact"><div class="empty-mark warm">${icons.bell}</div><strong>No reminders</strong></div>`}
@@ -626,7 +640,7 @@ async function renderMeasurements() {
       <aside class="guidance-panel"><span class="guidance-icon">${icons.pulse}</span><span class="eyebrow">NOTE</span><h2>Vitals Tracking</h2><p>Measurements are saved directly to your local database.</p></aside>
     </section>
     <article class="section-panel history-panel" style="margin-top:20px;"><div class="section-title"><div><span class="eyebrow">HISTORY</span><h2>Recent personal entries</h2></div><span class="history-count">${readings.length} entries</span></div>
-      ${readings.length ? `<div class="history-table"><div class="history-row history-head"><span>Date</span><span>Steps</span><span>Active</span><span>Sleep</span><span>Glucose</span><span>Blood pressure</span></div>${readings.map((reading) => `<div class="history-row"><span>${new Date(reading.recorded_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span><span>${reading.steps?.toLocaleString() ?? "—"}</span><span>${reading.active_minutes == null ? "—" : `${reading.active_minutes} min`}</span><span>${reading.sleep_hours == null ? "—" : `${reading.sleep_hours} hrs`}</span><span>${reading.fasting_glucose == null ? "—" : `${reading.fasting_glucose} mg/dL`}</span><span>${reading.systolic_bp == null ? "—" : `${reading.systolic_bp}/${reading.diastolic_bp}`}</span></div>`).join("")}</div>` : `<div class="empty-history">Your saved check-ins will appear here.</div>`}
+      ${readings.length ? `<div class="history-table"><div class="history-row history-head"><span>Date</span><span>Steps</span><span>Active</span><span>Sleep</span><span>Glucose</span><span>Blood pressure</span></div>${readings.map((reading) => `<div class="history-row"><span>${new Date(reading.recorded_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span><span>${reading.steps?.toLocaleString() ?? "—"}</span><span>${reading.active_minutes == null ? "—" : `${reading.active_minutes} min`}</span><span>${reading.sleep_hours == null ? "—" : `${reading.sleep_hours} hrs`}</span><span>${reading.fasting_glucose == null ? "—" : `${reading.fasting_glucose} mg/dL`}</span><span>${reading.systolic_bp != null && reading.diastolic_bp != null ? `${reading.systolic_bp}/${reading.diastolic_bp}` : (reading.systolic_bp ?? reading.diastolic_bp ?? "—")}</span></div>`).join("")}</div>` : `<div class="empty-history">Your saved check-ins will appear here.</div>`}
     </article>
   `);
 
@@ -691,7 +705,22 @@ async function renderProfile() {
   document.querySelector("#profile-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
-    const payload = { name: values.name.trim(), age: values.age ? Number(values.age) : null, gender: values.gender, blood_type: values.blood_type, height_cm: values.height_cm ? Number(values.height_cm) : null, weight_kg: values.weight_kg ? Number(values.weight_kg) : null, location: values.location, conditions: [], medications: [] };
+    const payload = {
+      name: values.name.trim(),
+      age: values.age ? Number(values.age) : null,
+      gender: values.gender,
+      blood_type: values.blood_type,
+      height_cm: values.height_cm ? Number(values.height_cm) : null,
+      weight_kg: values.weight_kg ? Number(values.weight_kg) : null,
+      location: values.location,
+      conditions: currentProfile?.conditions || [],
+      medications: currentProfile?.medications || [],
+      appetite: currentProfile?.appetite || "",
+      daily_routine: currentProfile?.daily_routine || "",
+      family_history: currentProfile?.family_history || "",
+      prescriptions: currentProfile?.prescriptions || [],
+      profile_image: currentProfile?.profile_image || "",
+    };
     try {
       currentProfile = await request("/profile", { method: "PUT", body: JSON.stringify(payload) });
       currentUser.name = values.name.trim();
@@ -725,13 +754,19 @@ async function render() {
 }
 
 function signOut(notify = true) {
-  if (token) request("/logout", { method: "POST" }).catch(() => {});
+  const currentToken = token;
   token = null;
   currentUser = null;
   currentProfile = null;
   localStorage.removeItem("beluga-token");
   activePage = "patients";
   activePatientId = null;
+  if (currentToken) {
+    fetch(`${API}/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentToken}` },
+    }).catch(() => {});
+  }
   authView();
   if (notify) showToast("You have signed out.");
 }
