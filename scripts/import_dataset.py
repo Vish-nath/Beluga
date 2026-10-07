@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.main import connect_db, initialize_database
+from app.database import connect_db, initialize_database
 
 
 REQUIRED_COLUMNS = {
@@ -43,16 +43,19 @@ def main() -> None:
         parser.error(f"CSV contains invalid numeric values: {error}")
 
     initialize_database()
-    with connect_db() as connection:
-        connection.execute(
-            """INSERT INTO dataset_summary (id, record_count, diabetes_count, hypertension_count, average_age, average_bmi, imported_at)
-               VALUES (1, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(id) DO UPDATE SET record_count = excluded.record_count,
-               diabetes_count = excluded.diabetes_count, hypertension_count = excluded.hypertension_count,
-               average_age = excluded.average_age, average_bmi = excluded.average_bmi,
-               imported_at = excluded.imported_at""",
-            (len(records), diabetes_count, hypertension_count, sum(ages) / len(ages),
-             sum(bmis) / len(bmis), datetime.now(timezone.utc).isoformat()),
+    with connect_db() as database:
+        database.dataset_summary.replace_one(
+            {"id": 1},
+            {
+                "id": 1,
+                "record_count": len(records),
+                "diabetes_count": diabetes_count,
+                "hypertension_count": hypertension_count,
+                "average_age": sum(ages) / len(ages),
+                "average_bmi": sum(bmis) / len(bmis),
+                "imported_at": datetime.now(timezone.utc).isoformat(),
+            },
+            upsert=True,
         )
 
     print(f"Imported aggregate summary for {len(records)} records; no individual rows were stored.")

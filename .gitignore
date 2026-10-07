@@ -32,6 +32,7 @@ google-services.json
 
 # Local Python server and personal health data
 .venv/
+.env
 __pycache__/
 *.py[cod]
 data/*.sqlite3

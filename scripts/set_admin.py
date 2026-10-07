@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.main import connect_db, initialize_database
+from app.database import connect_db, initialize_database
 
 
 def main() -> None:
@@ -15,12 +15,12 @@ def main() -> None:
     email = parser.parse_args().email.strip().lower()
 
     initialize_database()
-    with connect_db() as connection:
-        user = connection.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    with connect_db() as database:
+        user = database.users.find_one({"email": email}, {"id": 1})
         if user is None:
             parser.error("No account exists for that email. Create the account in the app first.")
-        connection.execute("UPDATE users SET is_admin = 0")
-        connection.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (user["id"],))
+        database.users.update_many({}, {"$set": {"is_admin": False}})
+        database.users.update_one({"id": user["id"]}, {"$set": {"is_admin": True}})
 
     print(f"Administrator role assigned to {email}.")
 
