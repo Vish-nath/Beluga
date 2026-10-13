@@ -120,6 +120,7 @@ def main() -> None:
             ],
             cwd=ROOT,
             check=True,
+            shell=(sys.platform == "win32"),
         )
     finally:
         main_file.write_bytes(saved_main)
@@ -127,7 +128,7 @@ def main() -> None:
 
     prepare_android_networking()
     prepare_macos_entitlements()
-    subprocess.run(["flutter", "pub", "get"], cwd=ROOT, check=True)
+    subprocess.run(["flutter", "pub", "get"], cwd=ROOT, check=True, shell=(sys.platform == "win32"))
     print("Flutter Android and macOS runners are ready.")
 
 
