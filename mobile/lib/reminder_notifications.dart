@@ -160,7 +160,7 @@ class ReminderNotifications {
     return hash == 0 ? 1 : hash;
   }
 
-  static const _darwinCategories = [
+  static final _darwinCategories = [
     DarwinNotificationCategory(
       'health_reminder',
       actions: [
