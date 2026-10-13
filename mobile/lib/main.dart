@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -195,7 +196,7 @@ class _BelugaAppState extends State<BelugaApp> {
           surfaceTintColor: Colors.transparent,
           elevation: 0,
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -795,10 +796,10 @@ class _HealthHomeState extends State<HealthHome> {
       ]);
       final profile = Map<String, dynamic>.from(results[0]['profile'] ?? {});
       final prescriptions = List<Map<String, dynamic>>.from(
-        (profile['prescriptions'] as List? ?? []).map(Map<String, dynamic>.from),
+        (profile['prescriptions'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
       );
       final reminders = List<Map<String, dynamic>>.from(
-        (results[1] as List).map(Map<String, dynamic>.from),
+        (results[1] as List).map((e) => Map<String, dynamic>.from(e as Map)),
       );
       await ReminderNotifications.sync(prescriptions: prescriptions, reminders: reminders);
     } catch (_) {}
@@ -2645,10 +2646,10 @@ class _RemindersPageState extends State<RemindersPage> {
     final profile = Map<String, dynamic>.from(results[1]['profile'] ?? {});
     await ReminderNotifications.sync(
       prescriptions: List<Map<String, dynamic>>.from(
-        (profile['prescriptions'] as List? ?? []).map(Map<String, dynamic>.from),
+        (profile['prescriptions'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
       ),
       reminders: List<Map<String, dynamic>>.from(
-        (results[0] as List).map(Map<String, dynamic>.from),
+        (results[0] as List).map((e) => Map<String, dynamic>.from(e as Map)),
       ),
     );
     return results[0];
@@ -2948,7 +2949,7 @@ class _ProfileFormState extends State<ProfileForm> {
     );
     if (image == null) return;
     final bytes = await image.readAsBytes();
-    if (bytes.length > 1_000_000) {
+    if (bytes.length > 1000000) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Choose a smaller profile image.')),
@@ -3094,7 +3095,7 @@ class _ProfileFormState extends State<ProfileForm> {
       await ReminderNotifications.requestPermission();
       final reminders = await widget.api.request('/reminders');
       await ReminderNotifications.sync(prescriptions: _prescriptions, reminders: List<Map<String, dynamic>>.from(
-        (reminders as List).map(Map<String, dynamic>.from),
+        (reminders as List).map((e) => Map<String, dynamic>.from(e as Map)),
       ));
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -3195,7 +3196,7 @@ class _ProfileFormState extends State<ProfileForm> {
           DropdownButtonFormField<String>(
             value: _bloodType.isEmpty ? null : _bloodType,
             decoration: const InputDecoration(labelText: 'Blood type'),
-            items: const [
+            items: [
               DropdownMenuItem(value: '', child: Text('Not provided')),
               for (final value in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])
                 DropdownMenuItem(value: value, child: Text(value)),
