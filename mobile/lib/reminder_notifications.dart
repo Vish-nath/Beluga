@@ -21,7 +21,7 @@ class ReminderNotifications {
     timezone.setLocalLocation(timezone.getLocation(localTimezone));
 
     await _plugin.initialize(
-      const InitializationSettings(
+      InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(notificationCategories: _darwinCategories),
         macOS: DarwinInitializationSettings(notificationCategories: _darwinCategories),
