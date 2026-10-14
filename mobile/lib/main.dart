@@ -3197,7 +3197,7 @@ class _ProfileFormState extends State<ProfileForm> {
             value: _bloodType.isEmpty ? null : _bloodType,
             decoration: const InputDecoration(labelText: 'Blood type'),
             items: [
-              DropdownMenuItem(value: '', child: Text('Not provided')),
+              const DropdownMenuItem(value: '', child: Text('Not provided')),
               for (final value in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])
                 DropdownMenuItem(value: value, child: Text(value)),
             ],
