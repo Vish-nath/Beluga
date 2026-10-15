@@ -6,19 +6,20 @@ import os
 import re
 import secrets
 import socket
+import urllib.parse
 import urllib.request
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.database import close_client, connect_db, initialize_database, next_id
 
@@ -27,6 +28,18 @@ STATIC_DIR = ROOT / "web"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 PASSWORD_ROUNDS = 310_000
 TOKEN_LIFETIME = timedelta(days=14)
+
+# Allowed CORS origins — set ALLOWED_ORIGINS env var as comma-separated list.
+# Defaults to localhost only for safety.
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").strip()
+ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
+_SAFE_IMAGE_PREFIXES = (
+    "data:image/jpeg;base64,",
+    "data:image/png;base64,",
+    "data:image/webp;base64,",
+    "data:image/gif;base64,",
+)
 
 
 def document_dict(document: dict | None) -> dict | None:
@@ -43,6 +56,11 @@ def insert_record(database: Database, collection: str, values: dict) -> dict:
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def today_utc() -> str:
+    """Return today's date in UTC as an ISO string (YYYY-MM-DD)."""
+    return datetime.now(timezone.utc).date().isoformat()
 
 
 def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
@@ -130,6 +148,13 @@ class ProfileInput(BaseModel):
     prescriptions: list[PrescriptionInput] = Field(default_factory=list, max_length=30)
     profile_image: str = Field(default="", max_length=1_500_000)
 
+    @field_validator("profile_image")
+    @classmethod
+    def validate_profile_image(cls, value: str) -> str:
+        if value and not any(value.startswith(prefix) for prefix in _SAFE_IMAGE_PREFIXES):
+            raise ValueError("profile_image must be a valid base64 data URI (jpeg, png, webp, or gif).")
+        return value
+
 
 class MeasurementInput(BaseModel):
     steps: int | None = Field(default=None, ge=0, le=200_000)
@@ -169,7 +194,7 @@ class PatientInput(BaseModel):
 
 
 class VisitInput(BaseModel):
-    visit_date: str = Field(default="", max_length=30)
+    visit_date: str = Field(default="", pattern=r"^(\d{4}-\d{2}-\d{2})?$", max_length=10)
     chief_complaint: str = Field(default="", max_length=255)
     diagnosis: str = Field(default="", max_length=255)
     systolic_bp: int | None = Field(default=None, ge=30, le=350)
@@ -180,7 +205,7 @@ class VisitInput(BaseModel):
     weight_kg: float | None = Field(default=None, ge=1.0, le=500.0)
     prescriptions: list[str] = Field(default_factory=list, max_length=50)
     clinical_notes: str = Field(default="", max_length=2000)
-    next_followup: str | None = Field(default=None, max_length=30)
+    next_followup: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$", max_length=10)
 
 
 def authenticated_user(authorization: Annotated[str | None, Header()] = None) -> int:
@@ -222,12 +247,33 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Beluga Health", version="0.2.0", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next) -> Response:
+    """Add standard security headers to every response."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    # Tight CSP: static assets + same-origin API calls only.
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self' https://oauth2.googleapis.com; "
+        "frame-ancestors 'none';"
+    )
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -331,8 +377,10 @@ def google_auth(payload: GoogleAuthInput) -> dict:
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=503, detail="Google sign-in is not configured on this server.")
     try:
-        url = f"https://oauth2.googleapis.com/tokeninfo?id_token={payload.id_token}"
-        with urllib.request.urlopen(url, timeout=5) as response:
+        # URL-encode the token to prevent injection and log leakage
+        params = urllib.parse.urlencode({"id_token": payload.id_token})
+        url = f"https://oauth2.googleapis.com/tokeninfo?{params}"
+        with urllib.request.urlopen(url, timeout=5) as response:  # noqa: S310
             data = json.loads(response.read().decode())
         if data.get("aud") != GOOGLE_CLIENT_ID or data.get("email_verified") not in (True, "true"):
             raise ValueError("Google token audience or email verification did not match.")
@@ -383,8 +431,10 @@ def get_me(user_id: CurrentUser) -> dict:
     with connect_db() as database:
         user = database.users.find_one({"id": user_id}, {"_id": 0, "id": 1, "name": 1, "email": 1, "is_admin": 1})
         profile = database.profiles.find_one({"user_id": user_id})
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found.")
     result = dict(user)
-    result["is_admin"] = bool(result["is_admin"])
+    result["is_admin"] = bool(result.get("is_admin", False))
     return {"user": result, "profile": profile_dict(profile)}
 
 
@@ -424,10 +474,12 @@ def add_measurement(payload: MeasurementInput, user_id: CurrentUser) -> dict:
 
 @app.get("/api/dashboard")
 def dashboard(user_id: CurrentUser) -> dict:
-    today = date.today().isoformat()
+    today = today_utc()
     with connect_db() as database:
         profile = database.profiles.find_one({"user_id": user_id})
         user = database.users.find_one({"id": user_id}, {"name": 1})
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found.")
         measurements = list(database.measurements.find({"user_id": user_id}).sort("recorded_at", -1).limit(7))
         reminders = list(database.reminders.find({"user_id": user_id, "active": True}).sort("scheduled_time", 1))
         completed_ids = {
@@ -443,9 +495,9 @@ def dashboard(user_id: CurrentUser) -> dict:
     latest = document_dict(measurements[0]) if measurements else None
     flags = []
     if latest:
-        if latest["fasting_glucose"] is not None and latest["fasting_glucose"] >= 126:
+        if latest.get("fasting_glucose") is not None and latest["fasting_glucose"] >= 126:
             flags.append("This fasting glucose reading is above a commonly used reference threshold. A clinician must interpret and confirm results.")
-        if latest["systolic_bp"] is not None and latest["diastolic_bp"] is not None and (latest["systolic_bp"] >= 130 or latest["diastolic_bp"] >= 80):
+        if latest.get("systolic_bp") is not None and latest.get("diastolic_bp") is not None and (latest["systolic_bp"] >= 130 or latest["diastolic_bp"] >= 80):
             flags.append("This blood pressure reading is elevated under common adult guidance. Repeat it correctly and discuss it with a clinician.")
     return {
         "name": user["name"], "profile": profile_dict(profile), "latest_measurement": latest,
@@ -529,12 +581,9 @@ def create_patient(payload: PatientInput, user_id: CurrentUser) -> dict:
     with connect_db() as database:
         pid = payload.patient_id.strip() if payload.patient_id and payload.patient_id.strip() else None
         if not pid:
+            # Generate a candidate ID; rely on the unique index to catch any rare race condition.
             count = database.patients.count_documents({})
-            candidate_id = f"PAT-{1001 + count}"
-            while database.patients.find_one({"patient_id": candidate_id}):
-                count += 1
-                candidate_id = f"PAT-{1001 + count}"
-            pid = candidate_id
+            pid = f"PAT-{1001 + count}"
 
         try:
             row = insert_record(database, "patients", {
@@ -547,7 +596,7 @@ def create_patient(payload: PatientInput, user_id: CurrentUser) -> dict:
                 "created_at": now, "updated_at": now,
             })
         except DuplicateKeyError as error:
-            raise HTTPException(status_code=409, detail=f"A patient with ID '{pid}' already exists.") from error
+            raise HTTPException(status_code=409, detail=f"A patient with ID '{pid}' already exists. Please provide a unique patient ID.") from error
 
     p = patient_dict(row)
     p["visit_count"] = 0
@@ -616,7 +665,7 @@ def delete_patient(patient_id: str, user_id: CurrentUser) -> None:
 @app.post("/api/patients/{patient_id}/visits", status_code=201)
 def add_patient_visit(patient_id: str, payload: VisitInput, user_id: CurrentUser) -> dict:
     now = utc_now().isoformat()
-    visit_date = payload.visit_date.strip() if payload.visit_date and payload.visit_date.strip() else date.today().isoformat()
+    visit_date = payload.visit_date.strip() if payload.visit_date and payload.visit_date.strip() else today_utc()
     with connect_db() as database:
         patient = database.patients.find_one(patient_query(patient_id, user_id), {"id": 1})
         if patient is None:
@@ -638,7 +687,7 @@ def add_patient_visit(patient_id: str, payload: VisitInput, user_id: CurrentUser
 
 @app.put("/api/patients/{patient_id}/visits/{visit_id}")
 def update_patient_visit(patient_id: str, visit_id: int, payload: VisitInput, user_id: CurrentUser) -> dict:
-    visit_date = payload.visit_date.strip() if payload.visit_date and payload.visit_date.strip() else date.today().isoformat()
+    visit_date = payload.visit_date.strip() if payload.visit_date and payload.visit_date.strip() else today_utc()
     with connect_db() as database:
         patient = database.patients.find_one(patient_query(patient_id, user_id), {"id": 1})
         if patient is None:
@@ -684,7 +733,7 @@ def delete_patient_visit(patient_id: str, visit_id: int, user_id: CurrentUser) -
 
 @app.get("/api/reminders")
 def list_reminders(user_id: CurrentUser) -> list[dict]:
-    today = date.today().isoformat()
+    today = today_utc()
     with connect_db() as database:
         rows = list(database.reminders.find({"user_id": user_id, "active": True}).sort("scheduled_time", 1))
         completed_ids = {
@@ -716,7 +765,7 @@ def complete_reminder(reminder_id: int, user_id: CurrentUser) -> None:
         if reminder is None:
             raise HTTPException(status_code=404, detail="Reminder not found.")
         database.reminder_completions.update_one(
-            {"reminder_id": reminder_id, "completed_on": date.today().isoformat()},
+            {"reminder_id": reminder_id, "completed_on": today_utc()},
             {"$setOnInsert": {"user_id": user_id}},
             upsert=True,
         )
