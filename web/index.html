@@ -8,18 +8,20 @@
     <meta name="robots" content="noindex, nofollow">
     <meta property="og:title" content="Beluga Health">
     <meta property="og:description" content="Personal check-ins, daily reminders, and patient visit notes in one place.">
-    <link rel="manifest" href="/manifest.webmanifest">
-    <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./mark.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="./styles.css">
     <title>Beluga Health — Your health workspace</title>
   </head>
   <body>
-    <div id="app" role="main" aria-live="polite"></div>
+    <div id="app" role="main" aria-live="polite">
+      <div class="startup-fallback"><strong>Beluga Health</strong><span>Loading your workspace…</span></div>
+    </div>
     <div id="toast-container" aria-live="assertive" aria-atomic="true" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous"></script>
-    <script src="/static/app.js" defer></script>
+    <script src="./app.js" defer></script>
   </body>
 </html>

@@ -10,7 +10,12 @@
   const toastContainer = document.querySelector("#toast-container");
   const API = "/api";
 
-  let token = localStorage.getItem("beluga-token") || null;
+  let token = null;
+  try {
+    token = localStorage.getItem("beluga-token") || null;
+  } catch (_) {
+    // The sign-in screen can still render when storage is unavailable (for example, file previews).
+  }
   let currentUser = null;
   let currentProfile = null;
   let activePage = "overview";
@@ -99,7 +104,9 @@
     token = authResponse.access_token;
     currentUser = authResponse.user;
     currentProfile = authResponse.profile;
-    localStorage.setItem("beluga-token", token);
+    try {
+      localStorage.setItem("beluga-token", token);
+    } catch (_) {}
     activePage = "overview";
     render();
   }
@@ -109,7 +116,9 @@
     token = null;
     currentUser = null;
     currentProfile = null;
-    localStorage.removeItem("beluga-token");
+    try {
+      localStorage.removeItem("beluga-token");
+    } catch (_) {}
     destroyCurrentChart();
     activePage = "overview";
     activePatientId = null;
@@ -1983,7 +1992,7 @@
 
   // Register service worker if supported
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
   }
 
   // Start the application

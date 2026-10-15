@@ -146,6 +146,16 @@ svg {
 
 /* === UTILITIES === */
 .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+.startup-fallback {
+  min-height: 100dvh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  color: var(--text-subtle);
+  font-size: 13px;
+}
+.startup-fallback strong { color: var(--text); font-size: 18px; }
 .eyebrow { font-size:10px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--text-muted); }
 .muted   { color:var(--text-subtle); }
 .gradient-text {
