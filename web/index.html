@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#06080f">
     <meta name="description" content="Beluga Health keeps personal check-ins, daily reminders, and patient visit notes together in one workspace.">
+    <meta name="beluga-api-base" content="/api">
     <meta name="robots" content="noindex, nofollow">
     <meta property="og:title" content="Beluga Health">
     <meta property="og:description" content="Personal check-ins, daily reminders, and patient visit notes in one place.">
@@ -18,8 +19,9 @@
   </head>
   <body>
     <div id="app" role="main" aria-live="polite">
-      <div class="startup-fallback"><strong>Beluga Health</strong><span>Loading your workspace…</span></div>
+      <div class="startup-fallback"><span class="startup-mark" aria-hidden="true">✳</span><strong>Beluga Health</strong><span>Loading your workspace…</span></div>
     </div>
+    <noscript><p class="noscript-note">Beluga Health needs JavaScript enabled to open your workspace.</p></noscript>
     <div id="toast-container" aria-live="assertive" aria-atomic="true" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous"></script>
     <script src="./app.js" defer></script>
