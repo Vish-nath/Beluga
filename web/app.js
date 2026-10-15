@@ -1067,6 +1067,9 @@
     currentProfile = data.profile || {};
     const latest = data.latest_measurement || {};
     const readings = data.measurements || [];
+    const hasTrendReadings = readings.some((reading) =>
+      reading.fasting_glucose != null || reading.systolic_bp != null || reading.diastolic_bp != null
+    );
     const reminders = data.reminders || [];
     const patientsCount = data.patients_count || 0;
 
@@ -1094,18 +1097,6 @@
         </div>
       </section>
 
-      <!-- Patient Database Quick Callout -->
-      <div class="patient-banner">
-        <div class="patient-banner-text">
-          <h3>${patientsCount} patient record${patientsCount === 1 ? "" : "s"}</h3>
-          <p>Add a patient profile or review the visit notes and follow-up dates you have saved.</p>
-        </div>
-        <button class="btn btn-primary" data-page="patients" type="button">
-          <span>Manage Patients</span>
-          ${icons.arrow}
-        </button>
-      </div>
-
       <!-- Metric Cards Grid -->
       <div class="metric-grid">
         <div class="metric-card mc-cyan">
@@ -1114,7 +1105,7 @@
             <div class="metric-icon cyan">${icons.chart}</div>
           </div>
           <div class="metric-value">${steps}</div>
-          <div class="metric-sub">${latest.steps != null ? "Logged in recent check-in" : "No steps recorded today"}</div>
+          <div class="metric-sub">${latest.steps != null ? "From your latest check-in" : "No recent entry"}</div>
           <div class="metric-bar">
             <div class="metric-bar-fill" style="width:${latest.steps ? Math.min(100, (latest.steps / 10000) * 100) : 0}%;background:var(--cyan);"></div>
           </div>
@@ -1126,7 +1117,7 @@
             <div class="metric-icon emerald">${icons.pulse}</div>
           </div>
           <div class="metric-value">${activeMin}</div>
-          <div class="metric-sub">${latest.active_minutes != null ? "Target: 45 min/day" : "Log activity in daily vitals"}</div>
+          <div class="metric-sub">${latest.active_minutes != null ? "From your latest check-in" : "No recent entry"}</div>
           <div class="metric-bar">
             <div class="metric-bar-fill" style="width:${latest.active_minutes ? Math.min(100, (latest.active_minutes / 60) * 100) : 0}%;background:var(--emerald);"></div>
           </div>
@@ -1138,7 +1129,7 @@
             <div class="metric-icon violet">${icons.calendar}</div>
           </div>
           <div class="metric-value">${sleep}</div>
-          <div class="metric-sub">${latest.sleep_hours != null ? "Restorative sleep cycle" : "No sleep entry recorded"}</div>
+          <div class="metric-sub">${latest.sleep_hours != null ? "From your latest check-in" : "No recent entry"}</div>
           <div class="metric-bar">
             <div class="metric-bar-fill" style="width:${latest.sleep_hours ? Math.min(100, (latest.sleep_hours / 8) * 100) : 0}%;background:var(--violet);"></div>
           </div>
@@ -1146,7 +1137,7 @@
 
         <div class="metric-card mc-amber">
           <div class="metric-top">
-            <span class="metric-label">BMI SCORE</span>
+            <span class="metric-label">BMI</span>
             <div class="metric-icon amber">${icons.user}</div>
           </div>
           <div class="metric-value">${bmi}</div>
@@ -1157,6 +1148,18 @@
         </div>
       </div>
 
+      <!-- Patient records quick link -->
+      <div class="patient-banner">
+        <div class="patient-banner-text">
+          <h3>${patientsCount} patient record${patientsCount === 1 ? "" : "s"}</h3>
+          <p>Add a patient profile or review the visit notes and follow-up dates you have saved.</p>
+        </div>
+        <button class="btn btn-primary" data-page="patients" type="button">
+          <span>Manage Patients</span>
+          ${icons.arrow}
+        </button>
+      </div>
+
       <!-- Main Overview 2-Column Grid -->
       <div class="overview-grid">
         <!-- Interactive Chart & History Panel -->
@@ -1164,16 +1167,17 @@
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
             <div>
               <span class="eyebrow">TREND ANALYSIS</span>
-              <h2 style="font-size:16px;font-weight:700;margin-top:2px;">Vitals History (Glucose & BP)</h2>
+              <h2 style="font-size:16px;font-weight:700;margin-top:2px;">Health readings over time</h2>
             </div>
             <button class="text-btn" data-page="measurements" type="button">
               <span>Full Vitals Log</span> ${icons.arrow}
             </button>
           </div>
 
-          <div style="height:240px;position:relative;">
-            <canvas id="overview-chart"></canvas>
-          </div>
+          <p class="chart-caption">Glucose and blood pressure use separate axes because they have different units.</p>
+          ${hasTrendReadings
+            ? `<div style="height:240px;position:relative;"><canvas id="overview-chart"></canvas></div>`
+            : `<div class="chart-empty">Your trend will appear after a check-in with glucose or blood pressure readings.</div>`}
 
           <div style="margin-top:24px;">
             <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;">
@@ -1285,13 +1289,14 @@
     renderShell(contentHtml);
 
     // Render Chart.js
-    if (window.Chart && readings.length) {
+    if (window.Chart && hasTrendReadings) {
       const reversed = [...readings].reverse().slice(-10);
       const labels = reversed.map((r) =>
         new Date(r.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
       );
       const glucoseData = reversed.map((r) => r.fasting_glucose);
       const systolicData = reversed.map((r) => r.systolic_bp);
+      const diastolicData = reversed.map((r) => r.diastolic_bp);
       const canvas = document.querySelector("#overview-chart");
 
       if (canvas) {
@@ -1305,6 +1310,7 @@
               {
                 label: "Fasting Glucose (mg/dL)",
                 data: glucoseData,
+                yAxisID: "glucose",
                 borderColor: "#06b6d4",
                 backgroundColor: "rgba(6, 182, 212, 0.12)",
                 fill: true,
@@ -1315,11 +1321,23 @@
               {
                 label: "Systolic BP (mmHg)",
                 data: systolicData,
+                yAxisID: "pressure",
                 borderColor: "#10b981",
                 backgroundColor: "rgba(16, 185, 129, 0.08)",
                 fill: true,
                 tension: 0.35,
                 pointBackgroundColor: "#10b981",
+                pointRadius: 4,
+              },
+              {
+                label: "Diastolic BP (mmHg)",
+                data: diastolicData,
+                yAxisID: "pressure",
+                borderColor: "#8b5cf6",
+                backgroundColor: "rgba(139, 92, 246, 0.08)",
+                fill: false,
+                tension: 0.35,
+                pointBackgroundColor: "#8b5cf6",
                 pointRadius: 4,
               },
             ],
@@ -1337,8 +1355,18 @@
                 grid: { color: "rgba(255, 255, 255, 0.05)" },
                 ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
               },
-              y: {
+              glucose: {
+                type: "linear",
+                position: "left",
+                title: { display: true, text: "Glucose (mg/dL)", color: "#94a3b8" },
                 grid: { color: "rgba(255, 255, 255, 0.05)" },
+                ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
+              },
+              pressure: {
+                type: "linear",
+                position: "right",
+                title: { display: true, text: "Blood pressure (mmHg)", color: "#94a3b8" },
+                grid: { drawOnChartArea: false },
                 ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
               },
             },
@@ -1374,13 +1402,16 @@
     }
 
     const readings = data.measurements || [];
+    const hasTrendReadings = readings.some((reading) =>
+      reading.fasting_glucose != null || reading.systolic_bp != null || reading.diastolic_bp != null
+    );
 
     const contentHtml = `
       <section class="page-heading">
         <div>
           <span class="eyebrow">${icons.chart} PERSONAL HEALTH LOG</span>
           <h1>Daily Health Check-ins</h1>
-          <p>Record personal measurements, activity, and sleep over time. These entries are for tracking and are not a diagnosis.</p>
+          <p>Record personal measurements, activity, and sleep over time. Use your clinician’s guidance to interpret readings.</p>
         </div>
       </section>
 
@@ -1391,7 +1422,7 @@
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
               <div>
                 <span class="eyebrow">NEW MEASUREMENT</span>
-                <h2 style="font-size:16px;font-weight:700;margin-top:2px;">Record Today's Numbers</h2>
+                <h2 style="font-size:16px;font-weight:700;margin-top:2px;">New check-in</h2>
               </div>
               <span class="mono" style="font-size:12px;color:var(--cyan);">${new Date().toLocaleDateString(undefined, {
                 month: "short",
@@ -1424,10 +1455,11 @@
 
           <!-- Interactive Trend Chart -->
           <div class="chart-wrapper">
-            <div class="chart-title">Vitals Progression Trend</div>
-            <div style="height:250px;position:relative;">
-              <canvas id="vitals-trend-chart"></canvas>
-            </div>
+            <div class="chart-title">Your recorded trends</div>
+            <p class="chart-caption">Glucose and blood pressure use separate axes because they have different units.</p>
+            ${hasTrendReadings
+              ? `<div style="height:250px;position:relative;"><canvas id="vitals-trend-chart"></canvas></div>`
+              : `<div class="chart-empty">Add glucose or blood pressure to a check-in to see a trend here.</div>`}
           </div>
 
           <!-- History Table -->
@@ -1487,24 +1519,18 @@
           </div>
         </div>
 
-        <!-- Sidebar Helper Guide -->
+        <!-- Prototype and interpretation note -->
         <aside>
           <div class="card" style="background:linear-gradient(135deg, rgba(6,182,212,0.06), rgba(20,184,166,0.04));border-color:rgba(6,182,212,0.18);">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
               <div style="width:32px;height:32px;border-radius:8px;background:var(--cyan-dim);color:var(--cyan);display:flex;align-items:center;justify-content:center;">
                 ${icons.shield}
               </div>
-              <span style="font-weight:700;font-size:14px;">Clinical Reference</span>
+              <span style="font-weight:700;font-size:14px;">A note about this log</span>
             </div>
             <p style="font-size:12px;color:var(--text-subtle);line-height:1.7;margin-bottom:14px;">
-              Optimal ranges for adult vitals under regular conditions:
+              Beluga stores the measurements you enter but does not interpret readings or recommend care. Use synthetic data in this prototype, and follow your clinician’s guidance.
             </p>
-            <div style="font-size:12px;display:grid;gap:8px;">
-              <div class="profile-meta-row"><span>Normal BP:</span><strong>&lt; 120/80 mmHg</strong></div>
-              <div class="profile-meta-row"><span>Fasting Glucose:</span><strong>70 – 99 mg/dL</strong></div>
-              <div class="profile-meta-row"><span>Daily Steps:</span><strong>8,000+ steps</strong></div>
-              <div class="profile-meta-row"><span>Sleep:</span><strong>7 – 9 hours</strong></div>
-            </div>
           </div>
         </aside>
       </div>
@@ -1513,7 +1539,7 @@
     renderShell(contentHtml);
 
     // Render Trend Chart
-    if (window.Chart && readings.length) {
+    if (window.Chart && hasTrendReadings) {
       const reversed = [...readings].reverse().slice(-14);
       const labels = reversed.map((r) =>
         new Date(r.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
@@ -1534,6 +1560,7 @@
               {
                 label: "Fasting Glucose",
                 data: glucoseData,
+                yAxisID: "glucose",
                 borderColor: "#06b6d4",
                 backgroundColor: "rgba(6, 182, 212, 0.1)",
                 tension: 0.3,
@@ -1542,6 +1569,7 @@
               {
                 label: "Systolic BP",
                 data: systolicData,
+                yAxisID: "pressure",
                 borderColor: "#10b981",
                 backgroundColor: "rgba(16, 185, 129, 0.1)",
                 tension: 0.3,
@@ -1550,6 +1578,7 @@
               {
                 label: "Diastolic BP",
                 data: diastolicData,
+                yAxisID: "pressure",
                 borderColor: "#8b5cf6",
                 backgroundColor: "rgba(139, 92, 246, 0.1)",
                 tension: 0.3,
@@ -1568,8 +1597,18 @@
                 grid: { color: "rgba(255, 255, 255, 0.05)" },
                 ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
               },
-              y: {
+              glucose: {
+                type: "linear",
+                position: "left",
+                title: { display: true, text: "Glucose (mg/dL)", color: "#94a3b8" },
                 grid: { color: "rgba(255, 255, 255, 0.05)" },
+                ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
+              },
+              pressure: {
+                type: "linear",
+                position: "right",
+                title: { display: true, text: "Blood pressure (mmHg)", color: "#94a3b8" },
+                grid: { drawOnChartArea: false },
                 ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
               },
             },
