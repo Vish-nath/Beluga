@@ -8,7 +8,7 @@
 
   const appNode = document.querySelector("#app");
   const toastContainer = document.querySelector("#toast-container");
-  const API = "/api";
+  const API = (document.querySelector('meta[name="beluga-api-base"]')?.content || "/api").trim().replace(/\/+$/, "");
 
   let token = null;
   try {
@@ -81,6 +81,10 @@
     const res = await fetch(`${API}${path}`, { ...options, headers });
     if (res.status === 204) return null;
 
+    const contentType = (res.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.includes("application/json")) {
+      throw new Error("Beluga's API did not return data. Start the FastAPI server or set the API address in web/index.html.");
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401 && token) {
@@ -159,6 +163,7 @@
           <div class="auth-blob auth-blob-2"></div>
           <div class="auth-blob auth-blob-3"></div>
           <div class="auth-art-grid"></div>
+          <img class="auth-visual" src="./care-orbit.svg" alt="">
 
           <div class="auth-brand">
             <div class="auth-brand-icon">${icons.pulse}</div>
@@ -1969,24 +1974,21 @@
         await renderPatients();
       }
     } catch (err) {
-      if (err.message && err.message.toLowerCase().includes("fetch")) {
-        destroyCurrentChart();
-        appNode.innerHTML = `
-          <section class="offline-state">
-            <div class="offline-icon">${icons.alert}</div>
-            <h1>Server Connection Paused</h1>
-            <p>Could not connect to the Beluga FastAPI server. Ensure your backend is running on <code>http://localhost:8000</code>.</p>
-            <div style="display:flex;gap:12px;margin-top:10px;">
-              <button class="btn btn-primary" id="btn-reconnect" type="button">Try Reconnecting</button>
-              <button class="btn btn-secondary" id="btn-offline-signout" type="button">Sign Out</button>
-            </div>
-          </section>
-        `;
-        document.querySelector("#btn-reconnect")?.addEventListener("click", () => render());
-        document.querySelector("#btn-offline-signout")?.addEventListener("click", () => signOut());
-      } else {
-        showToast(err.message, "error");
-      }
+      const isConnectionError = /fetch|did not return data/i.test(err.message || "");
+      destroyCurrentChart();
+      appNode.innerHTML = `
+        <section class="offline-state">
+          <div class="offline-icon">${icons.alert}</div>
+          <h1>${isConnectionError ? "Server Connection Paused" : "Workspace Could Not Load"}</h1>
+          <p>${escapeHtml(err.message || "Please try loading your workspace again.")}</p>
+          <div style="display:flex;gap:12px;margin-top:10px;">
+            <button class="btn btn-primary" id="btn-reconnect" type="button">Try Reconnecting</button>
+            <button class="btn btn-secondary" id="btn-offline-signout" type="button">Sign Out</button>
+          </div>
+        </section>
+      `;
+      document.querySelector("#btn-reconnect")?.addEventListener("click", () => render());
+      document.querySelector("#btn-offline-signout")?.addEventListener("click", () => signOut());
     }
   }
 
