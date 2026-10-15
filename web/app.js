@@ -13,7 +13,7 @@
   let token = localStorage.getItem("beluga-token") || null;
   let currentUser = null;
   let currentProfile = null;
-  let activePage = "patients"; // Default landing page for clinicians / users
+  let activePage = "overview";
   let activePatientId = null;
   let activeChart = null;
 
@@ -100,7 +100,7 @@
     currentUser = authResponse.user;
     currentProfile = authResponse.profile;
     localStorage.setItem("beluga-token", token);
-    activePage = "patients";
+    activePage = "overview";
     render();
   }
 
@@ -111,7 +111,7 @@
     currentProfile = null;
     localStorage.removeItem("beluga-token");
     destroyCurrentChart();
-    activePage = "patients";
+    activePage = "overview";
     activePatientId = null;
 
     if (oldToken) {
@@ -157,41 +157,41 @@
           </div>
 
           <div class="auth-art-copy">
-            <span class="eyebrow">${icons.sparkle} CLINICAL & WELLNESS PLATFORM</span>
-            <h1>Modern care.<br><span class="gradient-text">Precise records.</span></h1>
-            <p>A secure, high-performance database platform for clinical patient tracking, vitals history, and lifestyle monitoring.</p>
+            <span class="eyebrow">${icons.sparkle} YOUR HEALTH WORKSPACE</span>
+            <h1>Care feels clearer<br><span class="gradient-text">when it’s together.</span></h1>
+            <p>Keep personal health entries, daily reminders, and patient visit notes together in one simple workspace.</p>
             
             <div class="auth-stats">
               <div class="auth-stat">
-                <strong>FastAPI</strong>
-                <span>High-Speed Async API</span>
+                <strong>Health</strong>
+                <span>Personal check-ins</span>
               </div>
               <div class="auth-stat">
-                <strong>MongoDB</strong>
-                <span>Encrypted Record Store</span>
+                <strong>Reminders</strong>
+                <span>Keep daily routines close</span>
               </div>
               <div class="auth-stat">
-                <strong>Zero Leak</strong>
-                <span>Strict Security Headers</span>
+                <strong>Records</strong>
+                <span>Patient notes & visits</span>
               </div>
             </div>
           </div>
 
           <div class="auth-art-footer">
-            BELUGA HEALTHCARE PLATFORM · ENTERPRISE READY
+            A STUDENT PROJECT PROTOTYPE · USE SYNTHETIC DATA ONLY
           </div>
         </div>
 
         <!-- Auth Interactive Form Side -->
         <div class="auth-panel">
           <div class="auth-form-wrap">
-            <span class="eyebrow">${isRegister ? "NEW PRACTITIONER / USER" : "AUTHENTICATION"}</span>
-            <h2>${isRegister ? "Create your workspace" : "Welcome back"}</h2>
-            <p class="auth-sub">${isRegister ? "Set up your clinical account to begin recording patient data." : "Sign in to access patient files and clinical dashboards."}</p>
+            <span class="eyebrow">${isRegister ? "GET STARTED" : "YOUR BELUGA ACCOUNT"}</span>
+            <h2>${isRegister ? "Create your account" : "Welcome back"}</h2>
+            <p class="auth-sub">${isRegister ? "Set up your space for health check-ins, reminders, and patient notes." : "Sign in to see your health entries, reminders, and patient records."}</p>
 
             <form id="auth-form" class="form-stack" novalidate>
-              ${isRegister ? renderField("Full Name", "name", "text", "", "autocomplete='name' required placeholder='Dr. Jane Doe'") : ""}
-              ${renderField("Email Address", "email", "email", "", "autocomplete='email' required placeholder='clinician@beluga.health'")}
+              ${isRegister ? renderField("Full Name", "name", "text", "", "autocomplete='name' required placeholder='Your name'") : ""}
+              ${renderField("Email Address", "email", "email", "", "autocomplete='email' required placeholder='you@example.com'")}
               ${renderField("Password", "password", "password", "", `autocomplete='${isRegister ? "new-password" : "current-password"}' minlength='8' required placeholder='••••••••'`)}
               
               <button class="btn btn-primary btn-wide" type="submit" id="btn-auth-submit" style="margin-top:6px;">
@@ -208,7 +208,7 @@
             </div>
 
             <div class="auth-foot-note">
-              ${icons.shield} Protected with strict CSP headers, Argon2-level PBKDF2 hashing, and isolated MongoDB session tokens.
+              ${icons.shield} Beluga is a student project prototype. Use synthetic data only; this app does not diagnose conditions or recommend treatment.
             </div>
           </div>
         </div>
@@ -259,7 +259,7 @@
   // APPLICATION SHELL (SIDEBAR + TOPBAR + CONTENT)
   // ==========================================
   function renderShell(contentHtml) {
-    const userName = currentUser?.name?.trim() || "Clinician";
+    const userName = currentUser?.name?.trim() || "Beluga member";
     const initials = userName
       .split(/\s+/)
       .filter(Boolean)
@@ -269,23 +269,23 @@
       .toUpperCase() || "BH";
 
     const navItems = [
-      { id: "patients", label: "Patients & Records", icon: icons.patients },
-      { id: "overview", label: "Dashboard", icon: icons.home },
-      { id: "measurements", label: "Daily Vitals", icon: icons.chart },
-      { id: "reminders", label: "Reminders & Rx", icon: icons.bell },
-      { id: "profile", label: "Clinician Profile", icon: icons.user },
+      { id: "overview", label: "Overview", icon: icons.home },
+      { id: "measurements", label: "Health check-ins", icon: icons.chart },
+      { id: "reminders", label: "Reminders", icon: icons.bell },
+      { id: "patients", label: "Patient records", icon: icons.patients },
+      { id: "profile", label: "My profile", icon: icons.user },
     ];
 
     appNode.innerHTML = `
       <div class="app-shell">
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
-          <a class="sidebar-brand" href="#" data-page="patients">
+          <a class="sidebar-brand" href="#" data-page="overview">
             <div class="sidebar-brand-icon">${icons.pulse}</div>
             <span>beluga<span class="sidebar-brand-sub"> health</span></span>
           </a>
 
-          <div class="nav-section-label">Medical Workspace</div>
+          <div class="nav-section-label">Health workspace</div>
           <nav class="sidebar-nav">
             ${navItems
               .map(
@@ -300,7 +300,7 @@
           </nav>
 
           <div class="sidebar-bottom">
-            <div class="status-dot">Database Connected</div>
+            <div class="status-dot">Workspace connected</div>
             <div class="user-chip">
               <div class="user-avatar">${escapeHtml(initials)}</div>
               <div class="user-chip-info">
@@ -325,7 +325,7 @@
                 day: "numeric",
                 year: "numeric",
               }).format(new Date())}</span>
-              <div class="topbar-badge">Live Clinician Session</div>
+              <div class="topbar-badge">Signed in</div>
             </div>
             <div class="topbar-right">
               <button class="topbar-avatar" data-page="profile" title="View Profile" type="button">
@@ -389,9 +389,9 @@
     const contentHtml = `
       <section class="page-heading">
         <div>
-          <span class="eyebrow">${icons.shield} CLINICAL DATABASE</span>
-          <h1>Patients & Medical Files</h1>
-          <p>Search, manage, and inspect comprehensive clinical histories and checkup diagnostics.</p>
+          <span class="eyebrow">${icons.shield} PATIENT RECORDS</span>
+          <h1>Patient records</h1>
+          <p>Keep patient details, visit notes, and follow-up dates organized in one place.</p>
         </div>
         <div class="page-heading-actions">
           <button class="btn btn-primary" id="btn-add-patient" type="button">
@@ -407,7 +407,7 @@
           <input type="text" id="patient-search-input" placeholder="Search by name, ID, phone, condition..." value="${escapeHtml(searchQuery)}">
         </div>
         <div class="mono" style="font-size:12px;color:var(--text-muted);">
-          Total Records: <strong style="color:var(--cyan);">${patients.length}</strong>
+          Patient records: <strong style="color:var(--cyan);">${patients.length}</strong>
         </div>
       </div>
 
@@ -449,7 +449,7 @@
                       .slice(0, 2)
                       .map((a) => `<span class="tag tag-rose">Allergy: ${escapeHtml(a)}</span>`)
                       .join("")}
-                    ${!p.chronic_conditions?.length && !p.allergies?.length ? `<span class="tag">No chronic tags</span>` : ""}
+                    ${!p.chronic_conditions?.length && !p.allergies?.length ? `<span class="tag">No conditions or allergies added</span>` : ""}
                   </div>
 
                   <div class="patient-card-foot">
@@ -542,7 +542,7 @@
             ← Back to Patient Directory
           </button>
           <h1>${escapeHtml(patient.name)}</h1>
-          <p>Comprehensive clinical history, prescribed medications, and visit logs.</p>
+          <p>Saved details and visit notes for this patient.</p>
         </div>
         <div class="page-heading-actions">
           <button class="btn btn-secondary" id="btn-edit-patient" type="button">
@@ -1078,14 +1078,18 @@
     const contentHtml = `
       <section class="page-heading">
         <div>
-          <span class="eyebrow">${icons.sparkle} CLINICAL OVERVIEW</span>
-          <h1>Welcome, ${escapeHtml(currentUser?.name || data.name || "Clinician")}</h1>
-          <p>Real-time analytics, patient metrics, and health compliance routine.</p>
+          <span class="eyebrow">${icons.sparkle} YOUR HEALTH WORKSPACE</span>
+          <h1>Welcome, ${escapeHtml(currentUser?.name || data.name || "there")}</h1>
+          <p>Your personal check-ins, daily reminders, and patient notes, together in one place.</p>
         </div>
         <div class="page-heading-actions">
-          <button class="btn btn-primary" data-page="patients" type="button">
+          <button class="btn btn-secondary" data-page="patients" type="button">
             ${icons.patients}
-            <span>Open Patient Database</span>
+            <span>Patient records</span>
+          </button>
+          <button class="btn btn-primary" data-page="measurements" type="button">
+            ${icons.plus}
+            <span>Log a check-in</span>
           </button>
         </div>
       </section>
@@ -1093,8 +1097,8 @@
       <!-- Patient Database Quick Callout -->
       <div class="patient-banner">
         <div class="patient-banner-text">
-          <h3>${patientsCount} Registered Patient(s) In Database</h3>
-          <p>Manage clinical checkup records, follow-up dates, diagnostic histories, and medication logs.</p>
+          <h3>${patientsCount} patient record${patientsCount === 1 ? "" : "s"}</h3>
+          <p>Add a patient profile or review the visit notes and follow-up dates you have saved.</p>
         </div>
         <button class="btn btn-primary" data-page="patients" type="button">
           <span>Manage Patients</span>
@@ -1267,7 +1271,7 @@
             <div class="empty-state" style="padding:40px 0;">
               <div class="empty-icon">${icons.bell}</div>
               <h3>No reminders active</h3>
-              <p>Schedule patient follow-ups or medications.</p>
+              <p>Add a reminder for a routine, meal, or medication schedule.</p>
               <button class="btn btn-secondary btn-sm" data-page="reminders" type="button">
                 ${icons.plus} <span>Add Reminder</span>
               </button>
@@ -1374,9 +1378,9 @@
     const contentHtml = `
       <section class="page-heading">
         <div>
-          <span class="eyebrow">${icons.chart} PERSONAL VITALS LOG</span>
+          <span class="eyebrow">${icons.chart} PERSONAL HEALTH LOG</span>
           <h1>Daily Health Check-ins</h1>
-          <p>Record and monitor vital signs, activity duration, and sleep quality over time.</p>
+          <p>Record personal measurements, activity, and sleep over time. These entries are for tracking and are not a diagnosis.</p>
         </div>
       </section>
 
