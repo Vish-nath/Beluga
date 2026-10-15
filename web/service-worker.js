@@ -1,4 +1,4 @@
-const CACHE_NAME = "beluga-health-v1";
+const CACHE_NAME = "beluga-health-v2";
 const APP_SHELL = ["/", "/static/styles.css", "/static/app.js", "/static/mark.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
