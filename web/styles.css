@@ -1749,7 +1749,7 @@ body::after {
   .auth-art { min-height: 232px; padding: 18px 22px 8px; }
   .auth-art-copy { padding-top: 18px; }
   .auth-art-copy h1 { max-width: 310px; font-size: 30px; letter-spacing: -1.2px; }
-  .auth-visual { width: 210px; right: -26px; top: 20%; opacity: .46; }
+  .auth-visual { width: 190px; right: -42px; top: 18%; opacity: .3; }
   .auth-panel { padding: 22px 16px 34px; }
   .auth-form-wrap { padding: 24px 20px; border-radius: 22px; }
   .topbar-date { font-size: 11px; }
