@@ -1109,6 +1109,18 @@ svg {
 }
 .chart-wrapper canvas { max-height: 260px; }
 .chart-title { font-size: 14px; font-weight: 700; margin-bottom: 16px; }
+.chart-caption { color: var(--text-subtle); font-size: 11px; margin: -10px 0 14px; }
+.chart-empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  color: var(--text-subtle);
+  font-size: 12px;
+  text-align: center;
+}
 
 .history-table { width: 100%; border-collapse: collapse; }
 .history-table th, .history-table td {
@@ -1382,4 +1394,13 @@ svg {
   .page-heading { flex-direction: column; }
   .modal-dialog { border-radius: var(--r-lg); }
   .patients-grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
