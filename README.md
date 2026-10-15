@@ -8,7 +8,7 @@
 | --- | --- |
 | Android | APK releases will be published on [GitHub Releases](https://github.com/Vish-nath/Beluga/releases). No release is available yet. |
 | macOS | Flutter macOS target can be built from source on a Mac; a downloadable Mac package is not currently published. |
-| Web | Served by the local FastAPI application. |
+| Web | Served locally by FastAPI or as a static Firebase Hosting frontend. The API must be running and reachable for sign-in and saved data. |
 
 > **Prototype notice:** Use synthetic data only. This software is not a medical device and does not diagnose conditions, recommend medication, or replace a qualified clinician.
 
@@ -59,6 +59,8 @@ py scripts/start_server.py
 Put your MongoDB connection string in `.env` as `MONGODB_URI`. The database name in the URI is used when present; otherwise the API uses `beluga`. Set `MONGODB_DATABASE` only when you want to override that choice. The tracked `.env.example` contains placeholders only; `.env` is ignored by Git. For MongoDB Atlas, use its connection string and ensure the API server's IP is allowed by the cluster's network access rules. For a local MongoDB server, a URI such as `mongodb://localhost:27017` works. The inspection command verifies the connection and creates the required indexes.
 
 The API is available at `http://<laptop-ip>:8000`; the mobile API base URL ends in `/api`. To find the laptop's address, run `ipconfig`. Connect the phone and laptop to the same private Wi-Fi, then set the APK's **Server Settings** to a URL such as `http://192.168.1.20:8000/api`. Allow Python through Windows Firewall on private networks if prompted. Existing data in the old SQLite file is not migrated automatically; the app now reads and writes MongoDB.
+
+Firebase Hosting serves the files in `web/`. It hosts the frontend only; it does not run the FastAPI/MongoDB backend. For a separate API host, set the `beluga-api-base` meta tag in `web/index.html` to the API URL ending in `/api`, and add the web origin to the server's `ALLOWED_ORIGINS` setting.
 
 For Google sign-in, configure a Google OAuth **Web client ID** in Google Cloud. Set the same value in `GOOGLE_CLIENT_ID` on the laptop server and `GOOGLE_SERVER_CLIENT_ID` in the mobile build. On Windows PowerShell, set the server value before launching it:
 
