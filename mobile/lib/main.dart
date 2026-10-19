@@ -127,11 +127,25 @@ class _BelugaAppState extends State<BelugaApp> {
   Map<String, dynamic>? _user;
   String _baseUrl = platformDefaultApiBaseUrl;
   bool _checkingSession = true;
+  bool _isDarkMode = false;
 
   @override
   void initState() {
     super.initState();
     _loadConfigAndRestoreSession();
+    _loadThemePreference();
+  }
+
+  Future<void> _loadThemePreference() async {
+    final savedTheme = await secureStorage.read(key: 'theme_mode');
+    if (savedTheme == 'dark') {
+      setState(() => _isDarkMode = true);
+    }
+  }
+
+  Future<void> _toggleTheme() async {
+    setState(() => _isDarkMode = !_isDarkMode);
+    await secureStorage.write(key: 'theme_mode', value: _isDarkMode ? 'dark' : 'light');
   }
 
   Future<void> _loadConfigAndRestoreSession() async {
@@ -183,8 +197,10 @@ class _BelugaAppState extends State<BelugaApp> {
     return MaterialApp(
       title: 'Beluga Health',
       debugShowCheckedModeBanner: false,
+      themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData(
         useMaterial3: true,
+        brightness: Brightness.light,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xff176b55),
           primary: const Color(0xff176b55),
@@ -218,6 +234,42 @@ class _BelugaAppState extends State<BelugaApp> {
           ),
         ),
       ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xff22a07d),
+          brightness: Brightness.dark,
+          primary: const Color(0xff22a07d),
+        ),
+        scaffoldBackgroundColor: const Color(0xff121412),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xff121412),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+        ),
+        cardTheme: CardThemeData(
+          color: const Color(0xff1c201e),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Color(0xff2a322e)),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xff1c201e),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xff2a322e)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xff2a322e)),
+          ),
+        ),
+      ),
       home: AnimatedSwitcher(
         duration: const Duration(milliseconds: 320),
         transitionBuilder: (child, animation) => FadeTransition(
@@ -239,6 +291,8 @@ class _BelugaAppState extends State<BelugaApp> {
                   baseUrl: _baseUrl,
                   onUpdateBaseUrl: _updateBaseUrl,
                   onAuthenticated: _acceptSession,
+                  isDarkMode: _isDarkMode,
+                  onToggleTheme: _toggleTheme,
                 )
               : HealthHome(
                   key: const ValueKey('signed-in'),
@@ -247,6 +301,8 @@ class _BelugaAppState extends State<BelugaApp> {
                   user: _user!,
                   onSignOut: _signOut,
                   onUpdateBaseUrl: _updateBaseUrl,
+                  isDarkMode: _isDarkMode,
+                  onToggleTheme: _toggleTheme,
                 ),
       ),
     );
@@ -411,6 +467,8 @@ class AuthScreen extends StatefulWidget {
     required this.baseUrl,
     required this.onUpdateBaseUrl,
     required this.onAuthenticated,
+    required this.isDarkMode,
+    required this.onToggleTheme,
     this.initialRegister = false,
     super.key,
   });
@@ -418,6 +476,8 @@ class AuthScreen extends StatefulWidget {
   final String baseUrl;
   final ValueChanged<String> onUpdateBaseUrl;
   final ValueChanged<Map<String, dynamic>> onAuthenticated;
+  final bool isDarkMode;
+  final VoidCallback onToggleTheme;
   final bool initialRegister;
 
   @override
@@ -530,7 +590,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 icon: const Icon(Icons.arrow_back),
                               )
                             else
-                              const SizedBox(width: 32),
+                              AnimatedThemeSwitch(isDarkMode: widget.isDarkMode, onToggle: widget.onToggleTheme),
                             const Icon(
                               Icons.monitor_heart_outlined,
                               size: 40,
@@ -681,6 +741,8 @@ class _AuthScreenState extends State<AuthScreen> {
                                         baseUrl: widget.baseUrl,
                                         onUpdateBaseUrl: widget.onUpdateBaseUrl,
                                         onAuthenticated: widget.onAuthenticated,
+                                        isDarkMode: widget.isDarkMode,
+                                        onToggleTheme: widget.onToggleTheme,
                                         initialRegister: true,
                                       ),
                                       transitionsBuilder:
@@ -757,6 +819,8 @@ class HealthHome extends StatefulWidget {
     required this.user,
     required this.onSignOut,
     required this.onUpdateBaseUrl,
+    required this.isDarkMode,
+    required this.onToggleTheme,
     super.key,
   });
 
@@ -765,6 +829,8 @@ class HealthHome extends StatefulWidget {
   final Map<String, dynamic> user;
   final VoidCallback onSignOut;
   final ValueChanged<String> onUpdateBaseUrl;
+  final bool isDarkMode;
+  final VoidCallback onToggleTheme;
 
   @override
   State<HealthHome> createState() => _HealthHomeState();
@@ -888,6 +954,7 @@ class _HealthHomeState extends State<HealthHome> {
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          AnimatedThemeSwitch(isDarkMode: widget.isDarkMode, onToggle: widget.onToggleTheme),
           IconButton(
             onPressed: widget.onSignOut,
             tooltip: 'Sign out',
@@ -3331,4 +3398,30 @@ class ErrorPanel extends StatelessWidget {
           ),
         ),
       );
+}
+
+class AnimatedThemeSwitch extends StatelessWidget {
+  const AnimatedThemeSwitch({required this.isDarkMode, required this.onToggle, super.key});
+  final bool isDarkMode;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onToggle,
+      tooltip: isDarkMode ? 'Switch to light mode' : 'Switch to dark mode',
+      icon: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        transitionBuilder: (child, animation) => RotationTransition(
+          turns: Tween<double>(begin: 0.5, end: 1.0).animate(animation),
+          child: ScaleTransition(scale: animation, child: child),
+        ),
+        child: Icon(
+          isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+          key: ValueKey(isDarkMode),
+          color: isDarkMode ? Colors.amberAccent : Colors.teal[800],
+        ),
+      ),
+    );
+  }
 }
