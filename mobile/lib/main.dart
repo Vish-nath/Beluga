@@ -66,8 +66,9 @@ class HealthApi {
               .timeout(const Duration(seconds: 15));
           break;
         default:
-          response =
-              await http.get(uri, headers: headers).timeout(const Duration(seconds: 15));
+          response = await http
+              .get(uri, headers: headers)
+              .timeout(const Duration(seconds: 15));
           break;
       }
     } catch (e) {
@@ -92,7 +93,8 @@ class HealthApi {
       }));
 
   Future<Map<String, dynamic>> signInWithGoogle(String idToken) async =>
-      Map<String, dynamic>.from(await request('/auth/google', method: 'POST', body: {
+      Map<String, dynamic>.from(
+          await request('/auth/google', method: 'POST', body: {
         'id_token': idToken,
       }));
 
@@ -101,12 +103,12 @@ class HealthApi {
     String email,
     String password,
   ) async =>
-      Map<String, dynamic>.from(await request('/register', method: 'POST', body: {
+      Map<String, dynamic>.from(
+          await request('/register', method: 'POST', body: {
         'name': name,
         'email': email,
         'password': password,
       }));
-
 }
 
 Future<void> main() async {
@@ -158,7 +160,8 @@ class _BelugaAppState extends State<BelugaApp> {
   }
 
   Future<void> _acceptSession(Map<String, dynamic> result) async {
-    await secureStorage.write(key: 'access_token', value: result['access_token']);
+    await secureStorage.write(
+        key: 'access_token', value: result['access_token']);
     setState(() {
       _token = result['access_token'];
       _user = Map<String, dynamic>.from(result['user']);
@@ -167,7 +170,8 @@ class _BelugaAppState extends State<BelugaApp> {
 
   Future<void> _signOut() async {
     try {
-      await HealthApi(_token, baseUrl: _baseUrl).request('/logout', method: 'POST');
+      await HealthApi(_token, baseUrl: _baseUrl)
+          .request('/logout', method: 'POST');
     } catch (_) {}
     await secureStorage.delete(key: 'access_token');
     if (mounted) {
@@ -207,7 +211,8 @@ class _BelugaAppState extends State<BelugaApp> {
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: const BorderSide(color: Color(0xffdfe5df)),
@@ -223,8 +228,10 @@ class _BelugaAppState extends State<BelugaApp> {
         transitionBuilder: (child, animation) => FadeTransition(
           opacity: animation,
           child: SlideTransition(
-            position: Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero)
-                .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+            position:
+                Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero)
+                    .animate(CurvedAnimation(
+                        parent: animation, curve: Curves.easeOutCubic)),
             child: child,
           ),
         ),
@@ -234,20 +241,20 @@ class _BelugaAppState extends State<BelugaApp> {
                 body: Center(child: CircularProgressIndicator()),
               )
             : _token == null
-              ? AuthScreen(
-                  key: const ValueKey('sign-in'),
-                  baseUrl: _baseUrl,
-                  onUpdateBaseUrl: _updateBaseUrl,
-                  onAuthenticated: _acceptSession,
-                )
-              : HealthHome(
-                  key: const ValueKey('signed-in'),
-                  token: _token!,
-                  baseUrl: _baseUrl,
-                  user: _user!,
-                  onSignOut: _signOut,
-                  onUpdateBaseUrl: _updateBaseUrl,
-                ),
+                ? AuthScreen(
+                    key: const ValueKey('sign-in'),
+                    baseUrl: _baseUrl,
+                    onUpdateBaseUrl: _updateBaseUrl,
+                    onAuthenticated: _acceptSession,
+                  )
+                : HealthHome(
+                    key: const ValueKey('signed-in'),
+                    token: _token!,
+                    baseUrl: _baseUrl,
+                    user: _user!,
+                    onSignOut: _signOut,
+                    onUpdateBaseUrl: _updateBaseUrl,
+                  ),
       ),
     );
   }
@@ -342,14 +349,18 @@ class _ServerConfigDialogState extends State<ServerConfigDialog> {
               children: [
                 ActionChip(
                   label: const Text('Emulator', style: TextStyle(fontSize: 11)),
-                  onPressed: () => _controller.text = 'http://10.0.2.2:8000/api',
+                  onPressed: () =>
+                      _controller.text = 'http://10.0.2.2:8000/api',
                 ),
                 ActionChip(
-                    label: Text(
-                      defaultTargetPlatform == TargetPlatform.macOS ? 'This Mac' : 'Localhost',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  onPressed: () => _controller.text = 'http://127.0.0.1:8000/api',
+                  label: Text(
+                    defaultTargetPlatform == TargetPlatform.macOS
+                        ? 'This Mac'
+                        : 'Localhost',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  onPressed: () =>
+                      _controller.text = 'http://127.0.0.1:8000/api',
                 ),
               ],
             ),
@@ -370,14 +381,18 @@ class _ServerConfigDialogState extends State<ServerConfigDialog> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _testSuccess ? const Color(0xffe8f5e9) : const Color(0xffffebee),
+                  color: _testSuccess
+                      ? const Color(0xffe8f5e9)
+                      : const Color(0xffffebee),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   _testResult!,
                   style: TextStyle(
                     fontSize: 12,
-                    color: _testSuccess ? const Color(0xff2e7d32) : const Color(0xffc62828),
+                    color: _testSuccess
+                        ? const Color(0xff2e7d32)
+                        : const Color(0xffc62828),
                   ),
                 ),
               ),
@@ -441,7 +456,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _signInWithGoogle() async {
     if (googleServerClientId.isEmpty) {
-      setState(() => _error = 'Google sign-in is not configured for this build.');
+      setState(
+          () => _error = 'Google sign-in is not configured for this build.');
       return;
     }
     setState(() {
@@ -456,13 +472,16 @@ class _AuthScreenState extends State<AuthScreen> {
       final account = await google.signIn();
       if (account == null) return;
       final idToken = (await account.authentication).idToken;
-      if (idToken == null) throw Exception('Google did not return a verified sign-in token.');
-      final result = await HealthApi(null, baseUrl: widget.baseUrl).signInWithGoogle(idToken);
+      if (idToken == null)
+        throw Exception('Google did not return a verified sign-in token.');
+      final result = await HealthApi(null, baseUrl: widget.baseUrl)
+          .signInWithGoogle(idToken);
       if (_register) Navigator.of(context).pop();
       widget.onAuthenticated(result);
     } catch (error) {
       if (mounted) {
-        setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+        setState(
+            () => _error = error.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -484,7 +503,7 @@ class _AuthScreenState extends State<AuthScreen> {
               _password.text,
             )
           : await api.signIn(_email.text.trim(), _password.text);
-          if (_register) Navigator.of(context).pop();
+      if (_register) Navigator.of(context).pop();
       widget.onAuthenticated(result);
     } catch (error) {
       setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
@@ -526,7 +545,8 @@ class _AuthScreenState extends State<AuthScreen> {
                             if (_register)
                               IconButton(
                                 tooltip: 'Back to sign in',
-                                onPressed: () => Navigator.of(context).maybePop(),
+                                onPressed: () =>
+                                    Navigator.of(context).maybePop(),
                                 icon: const Icon(Icons.arrow_back),
                               )
                             else
@@ -537,7 +557,8 @@ class _AuthScreenState extends State<AuthScreen> {
                               color: Color(0xff176b55),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.settings_outlined, size: 20),
+                              icon:
+                                  const Icon(Icons.settings_outlined, size: 20),
                               tooltip: 'Configure Server Address',
                               onPressed: _openServerConfig,
                             ),
@@ -546,7 +567,10 @@ class _AuthScreenState extends State<AuthScreen> {
                         const SizedBox(height: 8),
                         Text(
                           'Beluga Health',
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
                                 fontWeight: FontWeight.bold,
                               ),
                           textAlign: TextAlign.center,
@@ -554,7 +578,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         const SizedBox(height: 4),
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 220),
-                          transitionBuilder: (child, animation) => FadeTransition(
+                          transitionBuilder: (child, animation) =>
+                              FadeTransition(
                             opacity: animation,
                             child: SlideTransition(
                               position: Tween<Offset>(
@@ -570,7 +595,8 @@ class _AuthScreenState extends State<AuthScreen> {
                                 : 'Sign in with email and password',
                             key: ValueKey(_register),
                             textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.black54, fontSize: 13),
+                            style: const TextStyle(
+                                color: Colors.black54, fontSize: 13),
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -583,10 +609,12 @@ class _AuthScreenState extends State<AuthScreen> {
                                 ? [
                                     TextFormField(
                                       controller: _name,
-                                      decoration: const InputDecoration(labelText: 'Full name'),
-                                      validator: (value) => value == null || value.trim().isEmpty
-                                          ? 'Enter your name.'
-                                          : null,
+                                      decoration: const InputDecoration(
+                                          labelText: 'Full name'),
+                                      validator: (value) =>
+                                          value == null || value.trim().isEmpty
+                                              ? 'Enter your name.'
+                                              : null,
                                     ),
                                     const SizedBox(height: 12),
                                   ]
@@ -600,9 +628,10 @@ class _AuthScreenState extends State<AuthScreen> {
                             labelText: 'Email address',
                             hintText: 'you@gmail.com',
                           ),
-                          validator: (value) => value == null || !value.contains('@')
-                              ? 'Enter a valid email address.'
-                              : null,
+                          validator: (value) =>
+                              value == null || !value.contains('@')
+                                  ? 'Enter a valid email address.'
+                                  : null,
                         ),
                         const SizedBox(height: 12),
                         const Text(
@@ -614,10 +643,12 @@ class _AuthScreenState extends State<AuthScreen> {
                         TextFormField(
                           controller: _password,
                           obscureText: true,
-                          decoration: const InputDecoration(labelText: 'Password'),
-                          validator: (value) => value == null || value.length < 8
-                              ? 'Use at least 8 characters.'
-                              : null,
+                          decoration:
+                              const InputDecoration(labelText: 'Password'),
+                          validator: (value) =>
+                              value == null || value.length < 8
+                                  ? 'Use at least 8 characters.'
+                                  : null,
                         ),
                         if (_error != null) ...[
                           const SizedBox(height: 12),
@@ -629,7 +660,8 @@ class _AuthScreenState extends State<AuthScreen> {
                             ),
                             child: Text(
                               _error!,
-                              style: const TextStyle(color: Colors.red, fontSize: 13),
+                              style: const TextStyle(
+                                  color: Colors.red, fontSize: 13),
                             ),
                           ),
                         ],
@@ -675,17 +707,19 @@ class _AuthScreenState extends State<AuthScreen> {
                                   }
                                   Navigator.of(context).push(
                                     PageRouteBuilder<void>(
-                                      transitionDuration: const Duration(milliseconds: 280),
-                                      pageBuilder: (context, animation, secondaryAnimation) =>
+                                      transitionDuration:
+                                          const Duration(milliseconds: 280),
+                                      pageBuilder: (context, animation,
+                                              secondaryAnimation) =>
                                           AuthScreen(
                                         baseUrl: widget.baseUrl,
                                         onUpdateBaseUrl: widget.onUpdateBaseUrl,
                                         onAuthenticated: widget.onAuthenticated,
                                         initialRegister: true,
                                       ),
-                                      transitionsBuilder:
-                                          (context, animation, secondaryAnimation, child) =>
-                                              FadeTransition(
+                                      transitionsBuilder: (context, animation,
+                                              secondaryAnimation, child) =>
+                                          FadeTransition(
                                         opacity: animation,
                                         child: SlideTransition(
                                           position: Tween<Offset>(
@@ -711,7 +745,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         GestureDetector(
                           onTap: _openServerConfig,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 6, horizontal: 10),
                             decoration: BoxDecoration(
                               color: const Color(0xfff0f4f2),
                               borderRadius: BorderRadius.circular(6),
@@ -720,12 +755,14 @@ class _AuthScreenState extends State<AuthScreen> {
                               mainAxisSize: MainAxisSize.min,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Icons.wifi_outlined, size: 14, color: Color(0xff176b55)),
+                                const Icon(Icons.wifi_outlined,
+                                    size: 14, color: Color(0xff176b55)),
                                 const SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
                                     'Server: ${widget.baseUrl}',
-                                    style: const TextStyle(fontSize: 11, color: Color(0xff176b55)),
+                                    style: const TextStyle(
+                                        fontSize: 11, color: Color(0xff176b55)),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -796,21 +833,27 @@ class _HealthHomeState extends State<HealthHome> {
       ]);
       final profile = Map<String, dynamic>.from(results[0]['profile'] ?? {});
       final prescriptions = List<Map<String, dynamic>>.from(
-        (profile['prescriptions'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
+        (profile['prescriptions'] as List? ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map)),
       );
       final reminders = List<Map<String, dynamic>>.from(
         (results[1] as List).map((e) => Map<String, dynamic>.from(e as Map)),
       );
-      await ReminderNotifications.sync(prescriptions: prescriptions, reminders: reminders);
+      await ReminderNotifications.sync(
+          prescriptions: prescriptions, reminders: reminders);
     } catch (_) {}
   }
 
-  Future<void> _handleNotificationResponse(NotificationResponse response) async {
-    if (response.actionId != 'mark_complete' || response.payload == null) return;
+  Future<void> _handleNotificationResponse(
+      NotificationResponse response) async {
+    if (response.actionId != 'mark_complete' || response.payload == null)
+      return;
     try {
-      final payload = Map<String, dynamic>.from(jsonDecode(response.payload!) as Map);
+      final payload =
+          Map<String, dynamic>.from(jsonDecode(response.payload!) as Map);
       if (payload['kind'] == 'reminder') {
-        await _api.request('/reminders/${payload['id']}/complete', method: 'POST');
+        await _api.request('/reminders/${payload['id']}/complete',
+            method: 'POST');
       } else if (payload['kind'] == 'prescription') {
         await _api.request(
           '/prescription-completions',
@@ -831,7 +874,8 @@ class _HealthHomeState extends State<HealthHome> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
   }
@@ -852,13 +896,14 @@ class _HealthHomeState extends State<HealthHome> {
       ];
 
   List<IconData> get _icons => [
-    Icons.people_alt_outlined,
-    Icons.home_outlined,
-    Icons.monitor_heart_outlined,
-    Icons.notifications_outlined,
-    Icons.person_outline,
-    if (widget.user['is_admin'] == true) Icons.admin_panel_settings_outlined,
-  ];
+        Icons.people_alt_outlined,
+        Icons.home_outlined,
+        Icons.monitor_heart_outlined,
+        Icons.notifications_outlined,
+        Icons.person_outline,
+        if (widget.user['is_admin'] == true)
+          Icons.admin_panel_settings_outlined,
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -900,7 +945,8 @@ class _HealthHomeState extends State<HealthHome> {
           if (wide)
             NavigationRail(
               selectedIndex: _selected,
-              onDestinationSelected: (value) => setState(() => _selected = value),
+              onDestinationSelected: (value) =>
+                  setState(() => _selected = value),
               labelType: NavigationRailLabelType.all,
               destinations: [
                 for (var i = 0; i < _pages.length; i++)
@@ -920,7 +966,8 @@ class _HealthHomeState extends State<HealthHome> {
                   position: Tween<Offset>(
                     begin: const Offset(0.025, 0),
                     end: Offset.zero,
-                  ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                  ).animate(CurvedAnimation(
+                      parent: animation, curve: Curves.easeOutCubic)),
                   child: child,
                 ),
               ),
@@ -933,7 +980,8 @@ class _HealthHomeState extends State<HealthHome> {
           ? null
           : NavigationBar(
               selectedIndex: _selected,
-              onDestinationSelected: (value) => setState(() => _selected = value),
+              onDestinationSelected: (value) =>
+                  setState(() => _selected = value),
               destinations: [
                 for (var i = 0; i < _pages.length; i++)
                   NavigationDestination(
@@ -986,7 +1034,9 @@ class _AdminPageState extends State<AdminPage> {
               children: [
                 Text('Could not load accounts: ${snapshot.error}'),
                 const SizedBox(height: 8),
-                FilledButton(onPressed: () => setState(_loadUsers), child: const Text('Retry')),
+                FilledButton(
+                    onPressed: () => setState(_loadUsers),
+                    child: const Text('Retry')),
               ],
             ),
           );
@@ -1000,12 +1050,14 @@ class _AdminPageState extends State<AdminPage> {
             children: [
               Text('Accounts', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 4),
-              const Text('Selecting an account opens its private health records.'),
+              const Text(
+                  'Selecting an account opens its private health records.'),
               const SizedBox(height: 12),
               for (final user in users)
                 Card(
                   child: ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+                    leading:
+                        const CircleAvatar(child: Icon(Icons.person_outline)),
                     title: Text(user['name']?.toString() ?? 'Unnamed account'),
                     subtitle: Text(user['email']?.toString() ?? ''),
                     trailing: const Icon(Icons.chevron_right),
@@ -1046,7 +1098,9 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
       widget.api.request('/admin/users/${widget.userId}');
 
   Widget _recordLine(String label, Object? value) {
-    final text = value == null || value.toString().isEmpty ? 'Not provided' : value.toString();
+    final text = value == null || value.toString().isEmpty
+        ? 'Not provided'
+        : value.toString();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Text('$label: $text'),
@@ -1064,7 +1118,8 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Could not load records: ${snapshot.error}'));
+            return Center(
+                child: Text('Could not load records: ${snapshot.error}'));
           }
 
           final data = Map<String, dynamic>.from(snapshot.data);
@@ -1072,14 +1127,18 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
           final profile = data['profile'] == null
               ? <String, dynamic>{}
               : Map<String, dynamic>.from(data['profile']);
-          final measurements = List<Map<String, dynamic>>.from(data['measurements'] ?? []);
-          final reminders = List<Map<String, dynamic>>.from(data['reminders'] ?? []);
-          final patients = List<Map<String, dynamic>>.from(data['patients'] ?? []);
+          final measurements =
+              List<Map<String, dynamic>>.from(data['measurements'] ?? []);
+          final reminders =
+              List<Map<String, dynamic>>.from(data['reminders'] ?? []);
+          final patients =
+              List<Map<String, dynamic>>.from(data['patients'] ?? []);
 
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(user['name']?.toString() ?? '', style: Theme.of(context).textTheme.titleLarge),
+              Text(user['name']?.toString() ?? '',
+                  style: Theme.of(context).textTheme.titleLarge),
               Text(user['email']?.toString() ?? ''),
               Card(
                 child: Padding(
@@ -1087,7 +1146,8 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Profile', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Profile',
+                          style: Theme.of(context).textTheme.titleMedium),
                       _recordLine('Age', profile['age']),
                       _recordLine('Gender', profile['gender']),
                       _recordLine('Blood type', profile['blood_type']),
@@ -1095,8 +1155,10 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                       _recordLine('Weight (kg)', profile['weight_kg']),
                       _recordLine('BMI', profile['bmi']),
                       _recordLine('Location', profile['location']),
-                      _recordLine('Conditions', (profile['conditions'] ?? []).join(', ')),
-                      _recordLine('Medications', (profile['medications'] ?? []).join(', ')),
+                      _recordLine('Conditions',
+                          (profile['conditions'] ?? []).join(', ')),
+                      _recordLine('Medications',
+                          (profile['medications'] ?? []).join(', ')),
                     ],
                   ),
                 ),
@@ -1107,7 +1169,8 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Health log (${measurements.length})', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Health log (${measurements.length})',
+                          style: Theme.of(context).textTheme.titleMedium),
                       for (final item in measurements) ...[
                         const Divider(),
                         _recordLine('Recorded', item['recorded_at']),
@@ -1115,7 +1178,8 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                         _recordLine('Active minutes', item['active_minutes']),
                         _recordLine('Sleep hours', item['sleep_hours']),
                         _recordLine('Fasting glucose', item['fasting_glucose']),
-                        _recordLine('Blood pressure', '${item['systolic_bp'] ?? '—'} / ${item['diastolic_bp'] ?? '—'}'),
+                        _recordLine('Blood pressure',
+                            '${item['systolic_bp'] ?? '—'} / ${item['diastolic_bp'] ?? '—'}'),
                       ],
                     ],
                   ),
@@ -1127,12 +1191,14 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Reminders (${reminders.length})', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Reminders (${reminders.length})',
+                          style: Theme.of(context).textTheme.titleMedium),
                       for (final reminder in reminders)
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(reminder['title']?.toString() ?? ''),
-                          subtitle: Text('${reminder['scheduled_time'] ?? ''} · ${reminder['instruction'] ?? ''}'),
+                          subtitle: Text(
+                              '${reminder['scheduled_time'] ?? ''} · ${reminder['instruction'] ?? ''}'),
                         ),
                     ],
                   ),
@@ -1144,28 +1210,43 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Patient records (${patients.length})', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Patient records (${patients.length})',
+                          style: Theme.of(context).textTheme.titleMedium),
                       for (final patient in patients)
                         ExpansionTile(
                           tilePadding: EdgeInsets.zero,
                           title: Text(patient['name']?.toString() ?? ''),
-                          subtitle: Text('${patient['patient_id'] ?? ''} · ${patient['age'] ?? ''} years'),
+                          subtitle: Text(
+                              '${patient['patient_id'] ?? ''} · ${patient['age'] ?? ''} years'),
                           children: [
-                            _recordLine('Conditions', (patient['chronic_conditions'] ?? []).join(', ')),
-                            _recordLine('Allergies', (patient['allergies'] ?? []).join(', ')),
-                            _recordLine('Medications', (patient['current_medications'] ?? []).join(', ')),
+                            _recordLine(
+                                'Conditions',
+                                (patient['chronic_conditions'] ?? [])
+                                    .join(', ')),
+                            _recordLine('Allergies',
+                                (patient['allergies'] ?? []).join(', ')),
+                            _recordLine(
+                                'Medications',
+                                (patient['current_medications'] ?? [])
+                                    .join(', ')),
                             _recordLine('Notes', patient['notes']),
-                            for (final visit in List<Map<String, dynamic>>.from(patient['visits'] ?? []))
+                            for (final visit in List<Map<String, dynamic>>.from(
+                                patient['visits'] ?? []))
                               ListTile(
                                 contentPadding: EdgeInsets.zero,
-                                title: Text('Visit ${visit['visit_date'] ?? ''}'),
+                                title:
+                                    Text('Visit ${visit['visit_date'] ?? ''}'),
                                 subtitle: Text([
                                   visit['chief_complaint'],
                                   visit['diagnosis'],
                                   visit['clinical_notes'],
                                   if ((visit['prescriptions'] ?? []).isNotEmpty)
                                     'Prescriptions: ${(visit['prescriptions'] as List).join(', ')}',
-                                ].where((value) => value != null && value.toString().isNotEmpty).join('\n')),
+                                ]
+                                    .where((value) =>
+                                        value != null &&
+                                        value.toString().isNotEmpty)
+                                    .join('\n')),
                               ),
                           ],
                         ),
@@ -1272,7 +1353,8 @@ class _PatientsPageState extends State<PatientsPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.people_outline, size: 56, color: Colors.black38),
+                          const Icon(Icons.people_outline,
+                              size: 56, color: Colors.black38),
                           const SizedBox(height: 14),
                           Text(
                             _searchController.text.isEmpty
@@ -1304,7 +1386,8 @@ class _PatientsPageState extends State<PatientsPage> {
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final p = list[index];
-                    final conditions = List<String>.from(p['chronic_conditions'] ?? []);
+                    final conditions =
+                        List<String>.from(p['chronic_conditions'] ?? []);
                     final visitCount = p['visit_count'] ?? 0;
                     return Card(
                       child: InkWell(
@@ -1335,13 +1418,15 @@ class _PatientsPageState extends State<PatientsPage> {
                                       (p['name'] as String? ?? 'P')
                                           .substring(0, 1)
                                           .toUpperCase(),
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           p['name'] ?? '',
@@ -1395,7 +1480,8 @@ class _PatientsPageState extends State<PatientsPage> {
                                       decoration: BoxDecoration(
                                         color: const Color(0xfff5efe6),
                                         borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: const Color(0xffe4d5c3)),
+                                        border: Border.all(
+                                            color: const Color(0xffe4d5c3)),
                                       ),
                                       child: Text(
                                         c,
@@ -1412,11 +1498,13 @@ class _PatientsPageState extends State<PatientsPage> {
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    const Icon(Icons.phone_outlined, size: 14, color: Colors.black45),
+                                    const Icon(Icons.phone_outlined,
+                                        size: 14, color: Colors.black45),
                                     const SizedBox(width: 6),
                                     Text(
                                       p['phone'],
-                                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.black54),
                                     ),
                                   ],
                                 ),
@@ -1490,7 +1578,9 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
           'Are you sure you want to delete this patient and all their past visit records? This action cannot be undone.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
@@ -1501,10 +1591,13 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
     );
     if (confirmed == true) {
       try {
-        await widget.api.request('/patients/${widget.patientId}', method: 'DELETE');
+        await widget.api
+            .request('/patients/${widget.patientId}', method: 'DELETE');
         if (mounted) Navigator.pop(context);
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        if (mounted)
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
@@ -1540,9 +1633,11 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
 
         final patient = Map<String, dynamic>.from(snapshot.data);
         final visits = List<Map<String, dynamic>>.from(patient['visits'] ?? []);
-        final conditions = List<String>.from(patient['chronic_conditions'] ?? []);
+        final conditions =
+            List<String>.from(patient['chronic_conditions'] ?? []);
         final allergies = List<String>.from(patient['allergies'] ?? []);
-        final medications = List<String>.from(patient['current_medications'] ?? []);
+        final medications =
+            List<String>.from(patient['current_medications'] ?? []);
 
         return Scaffold(
           appBar: AppBar(
@@ -1575,10 +1670,12 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
                         children: [
                           Text(
                             patient['name'] ?? '',
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.bold),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
                               color: const Color(0xff176b55),
                               borderRadius: BorderRadius.circular(6),
@@ -1601,65 +1698,92 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
                         children: [
                           _infoItem('Age', '${patient['age']} years'),
                           _infoItem('Gender', patient['gender'] ?? '—'),
-                          _infoItem('Blood Group', patient['blood_group'] != '' ? patient['blood_group'] : '—'),
+                          _infoItem(
+                              'Blood Group',
+                              patient['blood_group'] != ''
+                                  ? patient['blood_group']
+                                  : '—'),
                           if ((patient['phone'] as String? ?? '').isNotEmpty)
                             _infoItem('Phone', patient['phone']),
                           if ((patient['email'] as String? ?? '').isNotEmpty)
                             _infoItem('Email', patient['email']),
-                          if ((patient['emergency_contact'] as String? ?? '').isNotEmpty)
-                            _infoItem('Emergency Contact', patient['emergency_contact']),
+                          if ((patient['emergency_contact'] as String? ?? '')
+                              .isNotEmpty)
+                            _infoItem('Emergency Contact',
+                                patient['emergency_contact']),
                         ],
                       ),
                       if (allergies.isNotEmpty) ...[
                         const Divider(height: 24),
                         const Row(
                           children: [
-                            Icon(Icons.warning_amber_rounded, size: 16, color: Colors.amber),
+                            Icon(Icons.warning_amber_rounded,
+                                size: 16, color: Colors.amber),
                             SizedBox(width: 6),
-                            Text('Allergies:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text('Allergies:',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 13)),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 6,
-                          children: allergies.map((a) => Chip(
-                            label: Text(a, style: const TextStyle(fontSize: 11, color: Colors.red)),
-                            backgroundColor: const Color(0xffffebee),
-                            visualDensity: VisualDensity.compact,
-                          )).toList(),
+                          children: allergies
+                              .map((a) => Chip(
+                                    label: Text(a,
+                                        style: const TextStyle(
+                                            fontSize: 11, color: Colors.red)),
+                                    backgroundColor: const Color(0xffffebee),
+                                    visualDensity: VisualDensity.compact,
+                                  ))
+                              .toList(),
                         ),
                       ],
                       if (conditions.isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        const Text('Chronic Conditions:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const Text('Chronic Conditions:',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13)),
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 6,
-                          children: conditions.map((c) => Chip(
-                            label: Text(c, style: const TextStyle(fontSize: 11)),
-                            backgroundColor: const Color(0xfff0f4f2),
-                            visualDensity: VisualDensity.compact,
-                          )).toList(),
+                          children: conditions
+                              .map((c) => Chip(
+                                    label: Text(c,
+                                        style: const TextStyle(fontSize: 11)),
+                                    backgroundColor: const Color(0xfff0f4f2),
+                                    visualDensity: VisualDensity.compact,
+                                  ))
+                              .toList(),
                         ),
                       ],
                       if (medications.isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        const Text('Current Medications:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const Text('Current Medications:',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13)),
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 6,
-                          children: medications.map((m) => Chip(
-                            label: Text(m, style: const TextStyle(fontSize: 11)),
-                            backgroundColor: const Color(0xffe8f0fe),
-                            visualDensity: VisualDensity.compact,
-                          )).toList(),
+                          children: medications
+                              .map((m) => Chip(
+                                    label: Text(m,
+                                        style: const TextStyle(fontSize: 11)),
+                                    backgroundColor: const Color(0xffe8f0fe),
+                                    visualDensity: VisualDensity.compact,
+                                  ))
+                              .toList(),
                         ),
                       ],
                       if ((patient['notes'] as String? ?? '').isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        const Text('Clinical Notes:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const Text('Clinical Notes:',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13)),
                         const SizedBox(height: 4),
-                        Text(patient['notes'], style: const TextStyle(color: Colors.black87, fontSize: 13)),
+                        Text(patient['notes'],
+                            style: const TextStyle(
+                                color: Colors.black87, fontSize: 13)),
                       ],
                     ],
                   ),
@@ -1672,7 +1796,8 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
                 children: [
                   Text(
                     'Medical History & Records (${visits.length})',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   FilledButton.icon(
                     onPressed: _addVisit,
@@ -1712,8 +1837,10 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.black54, fontSize: 11)),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        Text(label,
+            style: const TextStyle(color: Colors.black54, fontSize: 11)),
+        Text(value,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
       ],
     );
   }
@@ -1732,24 +1859,28 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.event_note_outlined, size: 18, color: Color(0xff176b55)),
+                    const Icon(Icons.event_note_outlined,
+                        size: 18, color: Color(0xff176b55)),
                     const SizedBox(width: 8),
                     Text(
                       visit['visit_date'] ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15),
                     ),
                   ],
                 ),
                 if ((visit['next_followup'] as String? ?? '').isNotEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: const Color(0xffe0f2f1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       'Follow-up: ${visit['next_followup']}',
-                      style: const TextStyle(fontSize: 11, color: Color(0xff00695c)),
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xff00695c)),
                     ),
                   ),
               ],
@@ -1758,14 +1889,16 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
             if ((visit['chief_complaint'] as String? ?? '').isNotEmpty)
               Text(
                 'Complaint: ${visit['chief_complaint']}',
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                style:
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
               ),
             if ((visit['diagnosis'] as String? ?? '').isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   'Diagnosis: ${visit['diagnosis']}',
-                  style: const TextStyle(color: Color(0xff176b55), fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                      color: Color(0xff176b55), fontWeight: FontWeight.w500),
                 ),
               ),
             const SizedBox(height: 10),
@@ -1774,8 +1907,10 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
               spacing: 12,
               runSpacing: 6,
               children: [
-                if (visit['systolic_bp'] != null && visit['diastolic_bp'] != null)
-                  _vitalChip('BP', '${visit['systolic_bp']}/${visit['diastolic_bp']} mmHg'),
+                if (visit['systolic_bp'] != null &&
+                    visit['diastolic_bp'] != null)
+                  _vitalChip('BP',
+                      '${visit['systolic_bp']}/${visit['diastolic_bp']} mmHg'),
                 if (visit['fasting_glucose'] != null)
                   _vitalChip('Glucose', '${visit['fasting_glucose']} mg/dL'),
                 if (visit['heart_rate'] != null)
@@ -1788,15 +1923,19 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
             ),
             if (prescriptions.isNotEmpty) ...[
               const SizedBox(height: 10),
-              const Text('Prescriptions:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              const Text('Prescriptions:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
               const SizedBox(height: 4),
               ...prescriptions.map((rx) => Padding(
                     padding: const EdgeInsets.only(left: 4, bottom: 2),
                     child: Row(
                       children: [
-                        const Icon(Icons.medication_outlined, size: 14, color: Color(0xff176b55)),
+                        const Icon(Icons.medication_outlined,
+                            size: 14, color: Color(0xff176b55)),
                         const SizedBox(width: 6),
-                        Expanded(child: Text(rx, style: const TextStyle(fontSize: 13))),
+                        Expanded(
+                            child:
+                                Text(rx, style: const TextStyle(fontSize: 13))),
                       ],
                     ),
                   )),
@@ -1805,7 +1944,10 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
               const SizedBox(height: 8),
               Text(
                 visit['clinical_notes'],
-                style: const TextStyle(fontSize: 12, color: Colors.black87, fontStyle: FontStyle.italic),
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.black87,
+                    fontStyle: FontStyle.italic),
               ),
             ],
           ],
@@ -1845,20 +1987,29 @@ class PatientFormDialog extends StatefulWidget {
 
 class _PatientFormDialogState extends State<PatientFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  late final _id = TextEditingController(text: widget.existing?['patient_id'] ?? '');
-  late final _name = TextEditingController(text: widget.existing?['name'] ?? '');
-  late final _age = TextEditingController(text: widget.existing?['age']?.toString() ?? '');
-  late final _phone = TextEditingController(text: widget.existing?['phone'] ?? '');
-  late final _email = TextEditingController(text: widget.existing?['email'] ?? '');
-  late final _address = TextEditingController(text: widget.existing?['address'] ?? '');
-  late final _emergency = TextEditingController(text: widget.existing?['emergency_contact'] ?? '');
+  late final _id =
+      TextEditingController(text: widget.existing?['patient_id'] ?? '');
+  late final _name =
+      TextEditingController(text: widget.existing?['name'] ?? '');
+  late final _age =
+      TextEditingController(text: widget.existing?['age']?.toString() ?? '');
+  late final _phone =
+      TextEditingController(text: widget.existing?['phone'] ?? '');
+  late final _email =
+      TextEditingController(text: widget.existing?['email'] ?? '');
+  late final _address =
+      TextEditingController(text: widget.existing?['address'] ?? '');
+  late final _emergency =
+      TextEditingController(text: widget.existing?['emergency_contact'] ?? '');
   late final _conditions = TextEditingController(
       text: (widget.existing?['chronic_conditions'] as List? ?? []).join(', '));
   late final _allergies = TextEditingController(
       text: (widget.existing?['allergies'] as List? ?? []).join(', '));
   late final _medications = TextEditingController(
-      text: (widget.existing?['current_medications'] as List? ?? []).join(', '));
-  late final _notes = TextEditingController(text: widget.existing?['notes'] ?? '');
+      text:
+          (widget.existing?['current_medications'] as List? ?? []).join(', '));
+  late final _notes =
+      TextEditingController(text: widget.existing?['notes'] ?? '');
 
   String _gender = 'Female';
   String _bloodGroup = '';
@@ -1917,7 +2068,8 @@ class _PatientFormDialogState extends State<PatientFormDialog> {
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1940,7 +2092,9 @@ class _PatientFormDialogState extends State<PatientFormDialog> {
                 TextFormField(
                   controller: _name,
                   decoration: const InputDecoration(labelText: 'Full Name *'),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Enter patient name.' : null,
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? 'Enter patient name.'
+                      : null,
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -1960,7 +2114,9 @@ class _PatientFormDialogState extends State<PatientFormDialog> {
                         controller: _age,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: 'Age *'),
-                        validator: (v) => v == null || int.tryParse(v) == null ? 'Enter age.' : null,
+                        validator: (v) => v == null || int.tryParse(v) == null
+                            ? 'Enter age.'
+                            : null,
                       ),
                     ),
                   ],
@@ -1970,21 +2126,25 @@ class _PatientFormDialogState extends State<PatientFormDialog> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _gender.isNotEmpty ? _gender : 'Female',
+                        initialValue: _gender.isNotEmpty ? _gender : 'Female',
                         decoration: const InputDecoration(labelText: 'Gender'),
                         items: const [
-                          DropdownMenuItem(value: 'Female', child: Text('Female')),
+                          DropdownMenuItem(
+                              value: 'Female', child: Text('Female')),
                           DropdownMenuItem(value: 'Male', child: Text('Male')),
-                          DropdownMenuItem(value: 'Other', child: Text('Other')),
+                          DropdownMenuItem(
+                              value: 'Other', child: Text('Other')),
                         ],
-                        onChanged: (v) => setState(() => _gender = v ?? 'Female'),
+                        onChanged: (v) =>
+                            setState(() => _gender = v ?? 'Female'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _bloodGroup.isNotEmpty ? _bloodGroup : '',
-                        decoration: const InputDecoration(labelText: 'Blood Group'),
+                        initialValue: _bloodGroup.isNotEmpty ? _bloodGroup : '',
+                        decoration:
+                            const InputDecoration(labelText: 'Blood Group'),
                         items: const [
                           DropdownMenuItem(value: '', child: Text('Not known')),
                           DropdownMenuItem(value: 'A+', child: Text('A+')),
@@ -2008,14 +2168,16 @@ class _PatientFormDialogState extends State<PatientFormDialog> {
                       child: TextFormField(
                         controller: _phone,
                         keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(labelText: 'Phone Number'),
+                        decoration:
+                            const InputDecoration(labelText: 'Phone Number'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: TextFormField(
                         controller: _emergency,
-                        decoration: const InputDecoration(labelText: 'Emergency Contact'),
+                        decoration: const InputDecoration(
+                            labelText: 'Emergency Contact'),
                       ),
                     ),
                   ],
@@ -2059,10 +2221,14 @@ class _PatientFormDialogState extends State<PatientFormDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
         FilledButton(
           onPressed: _busy ? null : _save,
-          child: Text(_busy ? 'Saving...' : (isEditing ? 'Save Changes' : 'Create Patient')),
+          child: Text(_busy
+              ? 'Saving...'
+              : (isEditing ? 'Save Changes' : 'Create Patient')),
         ),
       ],
     );
@@ -2074,7 +2240,8 @@ class _PatientFormDialogState extends State<PatientFormDialog> {
 // ==========================================
 
 class VisitFormDialog extends StatefulWidget {
-  const VisitFormDialog({required this.api, required this.patientId, super.key});
+  const VisitFormDialog(
+      {required this.api, required this.patientId, super.key});
   final HealthApi api;
   final String patientId;
 
@@ -2119,7 +2286,8 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
           .where((s) => s.isNotEmpty)
           .toList(),
       'clinical_notes': _notes.text.trim(),
-      'next_followup': _followup.text.trim().isNotEmpty ? _followup.text.trim() : null,
+      'next_followup':
+          _followup.text.trim().isNotEmpty ? _followup.text.trim() : null,
     };
 
     try {
@@ -2131,7 +2299,8 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -2155,15 +2324,18 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _date,
-                        decoration: const InputDecoration(labelText: 'Visit Date (YYYY-MM-DD) *'),
-                        validator: (v) => v == null || v.trim().isEmpty ? 'Required.' : null,
+                        decoration: const InputDecoration(
+                            labelText: 'Visit Date (YYYY-MM-DD) *'),
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? 'Required.' : null,
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: TextFormField(
                         controller: _followup,
-                        decoration: const InputDecoration(labelText: 'Next Follow-up (optional)'),
+                        decoration: const InputDecoration(
+                            labelText: 'Next Follow-up (optional)'),
                       ),
                     ),
                   ],
@@ -2171,13 +2343,16 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _complaint,
-                  decoration: const InputDecoration(labelText: 'Chief Complaint / Symptoms *'),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Required.' : null,
+                  decoration: const InputDecoration(
+                      labelText: 'Chief Complaint / Symptoms *'),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Required.' : null,
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _diagnosis,
-                  decoration: const InputDecoration(labelText: 'Diagnosis / Assessment'),
+                  decoration: const InputDecoration(
+                      labelText: 'Diagnosis / Assessment'),
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -2186,7 +2361,8 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
                       child: TextFormField(
                         controller: _systolic,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Systolic BP (mmHg)'),
+                        decoration: const InputDecoration(
+                            labelText: 'Systolic BP (mmHg)'),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -2194,7 +2370,8 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
                       child: TextFormField(
                         controller: _diastolic,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Diastolic BP (mmHg)'),
+                        decoration: const InputDecoration(
+                            labelText: 'Diastolic BP (mmHg)'),
                       ),
                     ),
                   ],
@@ -2205,8 +2382,10 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _glucose,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Glucose (mg/dL)'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration:
+                            const InputDecoration(labelText: 'Glucose (mg/dL)'),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -2214,7 +2393,8 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
                       child: TextFormField(
                         controller: _heartRate,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Heart Rate (bpm)'),
+                        decoration: const InputDecoration(
+                            labelText: 'Heart Rate (bpm)'),
                       ),
                     ),
                   ],
@@ -2225,16 +2405,20 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _temperature,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Temperature (°C)'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: const InputDecoration(
+                            labelText: 'Temperature (°C)'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: TextFormField(
                         controller: _weight,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Weight (kg)'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration:
+                            const InputDecoration(labelText: 'Weight (kg)'),
                       ),
                     ),
                   ],
@@ -2251,7 +2435,8 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
                 TextFormField(
                   controller: _notes,
                   maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Clinical Notes / Instructions'),
+                  decoration: const InputDecoration(
+                      labelText: 'Clinical Notes / Instructions'),
                 ),
               ],
             ),
@@ -2259,7 +2444,9 @@ class _VisitFormDialogState extends State<VisitFormDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
         FilledButton(
           onPressed: _busy ? null : _save,
           child: Text(_busy ? 'Saving...' : 'Save Record'),
@@ -2290,12 +2477,17 @@ class OverviewPage extends StatelessWidget {
     return FutureBuilder<dynamic>(
       future: api.request('/dashboard'),
       builder: (context, snapshot) {
-        if (snapshot.hasError) return ErrorPanel(message: snapshot.error.toString());
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (snapshot.hasError)
+          return ErrorPanel(message: snapshot.error.toString());
+        if (!snapshot.hasData)
+          return const Center(child: CircularProgressIndicator());
         final data = Map<String, dynamic>.from(snapshot.data);
         final profile = Map<String, dynamic>.from(data['profile'] ?? {});
-        final latest = Map<String, dynamic>.from(data['latest_measurement'] ?? {});
-        final dataset = data['dataset'] == null ? null : Map<String, dynamic>.from(data['dataset']);
+        final latest =
+            Map<String, dynamic>.from(data['latest_measurement'] ?? {});
+        final dataset = data['dataset'] == null
+            ? null
+            : Map<String, dynamic>.from(data['dataset']);
         final patientsCount = data['patients_count'] ?? 0;
 
         return ListView(
@@ -2311,10 +2503,12 @@ class OverviewPage extends StatelessWidget {
             Card(
               color: const Color(0xffe8f5e9),
               child: ListTile(
-                leading: const Icon(Icons.people_alt, color: Color(0xff176b55), size: 32),
+                leading: const Icon(Icons.people_alt,
+                    color: Color(0xff176b55), size: 32),
                 title: Text('$patientsCount Patients in Database',
                     style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('View, modify, and track patient records & visits'),
+                subtitle: const Text(
+                    'View, modify, and track patient records & visits'),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                 onTap: () => onNavigate(0),
               ),
@@ -2356,7 +2550,8 @@ class OverviewPage extends StatelessWidget {
                 child: ListTile(
                   leading: const Icon(Icons.add_circle_outline),
                   title: const Text('Log personal health measurements'),
-                  subtitle: const Text('Steps, sleep, glucose, or blood pressure'),
+                  subtitle:
+                      const Text('Steps, sleep, glucose, or blood pressure'),
                   onTap: () => onNavigate(2),
                 ),
               ),
@@ -2414,7 +2609,8 @@ class RoutineGuide extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Daily wellness routine', style: Theme.of(context).textTheme.titleMedium),
+            Text('Daily wellness routine',
+                style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
             const Text(
               'General routine prompts only. This app does not diagnose or prescribe treatment.',
@@ -2465,7 +2661,8 @@ class RoutineGuide extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
                   Text(message, style: const TextStyle(fontSize: 13)),
                 ],
               ),
@@ -2497,7 +2694,11 @@ class AnimatedReveal extends StatelessWidget {
 }
 
 class MetricCard extends StatelessWidget {
-  const MetricCard({required this.label, required this.value, required this.icon, super.key});
+  const MetricCard(
+      {required this.label,
+      required this.value,
+      required this.icon,
+      super.key});
   final String label;
   final String value;
   final IconData icon;
@@ -2510,7 +2711,8 @@ class MetricCard extends StatelessWidget {
         child: Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Icon(icon, color: Theme.of(context).colorScheme.primary),
               const SizedBox(height: 10),
               Text(value, style: Theme.of(context).textTheme.headlineSmall),
@@ -2585,20 +2787,25 @@ class _MeasurementPageState extends State<MeasurementPage> {
   Widget build(BuildContext context) => ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text('Today’s Health Log', style: Theme.of(context).textTheme.headlineSmall),
+          Text('Today’s Health Log',
+              style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 14),
           for (final entry in _controllers.entries)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: TextField(
                 controller: entry.value,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(labelText: _measurementLabel(entry.key)),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration:
+                    InputDecoration(labelText: _measurementLabel(entry.key)),
               ),
             ),
           const Text('Enter personal measurements you have to monitor trends.'),
           if (_message != null)
-            Padding(padding: const EdgeInsets.only(top: 12), child: Text(_message!)),
+            Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(_message!)),
           const SizedBox(height: 12),
           FilledButton(
             onPressed: _busy ? null : _save,
@@ -2646,7 +2853,8 @@ class _RemindersPageState extends State<RemindersPage> {
     final profile = Map<String, dynamic>.from(results[1]['profile'] ?? {});
     await ReminderNotifications.sync(
       prescriptions: List<Map<String, dynamic>>.from(
-        (profile['prescriptions'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
+        (profile['prescriptions'] as List? ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map)),
       ),
       reminders: List<Map<String, dynamic>>.from(
         (results[0] as List).map((e) => Map<String, dynamic>.from(e as Map)),
@@ -2676,8 +2884,9 @@ class _RemindersPageState extends State<RemindersPage> {
               TextFormField(
                 controller: title,
                 decoration: const InputDecoration(labelText: 'Reminder title'),
-                validator: (value) =>
-                    value == null || value.trim().isEmpty ? 'Enter a title.' : null,
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter a title.'
+                    : null,
               ),
               TextFormField(
                 controller: time,
@@ -2695,10 +2904,13 @@ class _RemindersPageState extends State<RemindersPage> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           FilledButton(
             onPressed: () {
-              if (formKey.currentState!.validate()) Navigator.pop(context, true);
+              if (formKey.currentState!.validate())
+                Navigator.pop(context, true);
             },
             child: const Text('Add'),
           ),
@@ -2720,7 +2932,8 @@ class _RemindersPageState extends State<RemindersPage> {
       _reloadReminders();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
   }
@@ -2731,7 +2944,8 @@ class _RemindersPageState extends State<RemindersPage> {
       _reloadReminders();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
   }
@@ -2742,7 +2956,8 @@ class _RemindersPageState extends State<RemindersPage> {
       _reloadReminders();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
   }
@@ -2761,8 +2976,10 @@ class _RemindersPageState extends State<RemindersPage> {
   Widget build(BuildContext context) => FutureBuilder<dynamic>(
         future: _reminders,
         builder: (context, snapshot) {
-          if (snapshot.hasError) return ErrorPanel(message: snapshot.error.toString());
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError)
+            return ErrorPanel(message: snapshot.error.toString());
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
           final items = List<Map<String, dynamic>>.from(snapshot.data);
           return ListView(
             padding: const EdgeInsets.all(20),
@@ -2792,7 +3009,8 @@ class _RemindersPageState extends State<RemindersPage> {
                 const Card(
                   child: Padding(
                     padding: EdgeInsets.all(20),
-                    child: Text('No reminders yet. Add one to start your daily routine.'),
+                    child: Text(
+                        'No reminders yet. Add one to start your daily routine.'),
                   ),
                 ),
               for (final item in items)
@@ -2800,17 +3018,20 @@ class _RemindersPageState extends State<RemindersPage> {
                   child: ListTile(
                     leading: IconButton(
                       tooltip: 'Mark complete',
-                      onPressed: item['completed_today'] == 1 || item['completed_today'] == true
+                      onPressed: item['completed_today'] == 1 ||
+                              item['completed_today'] == true
                           ? null
                           : () => _complete(item['id']),
                       icon: Icon(
-                        item['completed_today'] == 1 || item['completed_today'] == true
+                        item['completed_today'] == 1 ||
+                                item['completed_today'] == true
                             ? Icons.check_circle
                             : Icons.circle_outlined,
                       ),
                     ),
                     title: Text(item['title']),
-                    subtitle: Text('${item['scheduled_time']}  ${item['instruction'] ?? ''}'),
+                    subtitle: Text(
+                        '${item['scheduled_time']}  ${item['instruction'] ?? ''}'),
                     trailing: IconButton(
                       tooltip: 'Delete reminder',
                       onPressed: () => _delete(item['id']),
@@ -2871,8 +3092,10 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) => FutureBuilder<dynamic>(
         future: _profile,
         builder: (context, snapshot) {
-          if (snapshot.hasError) return ErrorPanel(message: snapshot.error.toString());
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError)
+            return ErrorPanel(message: snapshot.error.toString());
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
           final result = Map<String, dynamic>.from(snapshot.data);
           final user = Map<String, dynamic>.from(result['user']);
           final profile = Map<String, dynamic>.from(result['profile'] ?? {});
@@ -2913,18 +3136,26 @@ class ProfileForm extends StatefulWidget {
 class _ProfileFormState extends State<ProfileForm> {
   late final _name = TextEditingController(text: widget.user['name'] ?? '');
   late final _email = TextEditingController(text: widget.user['email'] ?? '');
-  late final _age = TextEditingController(text: widget.profile['age']?.toString() ?? '');
-  late final _height = TextEditingController(text: widget.profile['height_cm']?.toString() ?? '');
-  late final _weight = TextEditingController(text: widget.profile['weight_kg']?.toString() ?? '');
-  late final _location = TextEditingController(text: widget.profile['location'] ?? '');
-  late final _conditions =
-      TextEditingController(text: (widget.profile['conditions'] as List? ?? []).join(', '));
-  late final _medications =
-      TextEditingController(text: (widget.profile['medications'] as List? ?? []).join(', '));
-  late final _appetite = TextEditingController(text: widget.profile['appetite'] ?? '');
-  late final _dailyRoutine = TextEditingController(text: widget.profile['daily_routine'] ?? '');
-  late final _familyHistory = TextEditingController(text: widget.profile['family_history'] ?? '');
-  late List<Map<String, dynamic>> _prescriptions = List<Map<String, dynamic>>.from(
+  late final _age =
+      TextEditingController(text: widget.profile['age']?.toString() ?? '');
+  late final _height = TextEditingController(
+      text: widget.profile['height_cm']?.toString() ?? '');
+  late final _weight = TextEditingController(
+      text: widget.profile['weight_kg']?.toString() ?? '');
+  late final _location =
+      TextEditingController(text: widget.profile['location'] ?? '');
+  late final _conditions = TextEditingController(
+      text: (widget.profile['conditions'] as List? ?? []).join(', '));
+  late final _medications = TextEditingController(
+      text: (widget.profile['medications'] as List? ?? []).join(', '));
+  late final _appetite =
+      TextEditingController(text: widget.profile['appetite'] ?? '');
+  late final _dailyRoutine =
+      TextEditingController(text: widget.profile['daily_routine'] ?? '');
+  late final _familyHistory =
+      TextEditingController(text: widget.profile['family_history'] ?? '');
+  late List<Map<String, dynamic>> _prescriptions =
+      List<Map<String, dynamic>>.from(
     (widget.profile['prescriptions'] as List? ?? []).map(
       (item) => Map<String, dynamic>.from(item),
     ),
@@ -2957,22 +3188,29 @@ class _ProfileFormState extends State<ProfileForm> {
       }
       return;
     }
-    setState(() => _profileImage = 'data:image/jpeg;base64,${base64Encode(bytes)}');
+    setState(
+        () => _profileImage = 'data:image/jpeg;base64,${base64Encode(bytes)}');
   }
 
   Future<void> _editPrescription({Map<String, dynamic>? prescription}) async {
-    final name = TextEditingController(text: prescription?['name']?.toString() ?? '');
-    final dose = TextEditingController(text: prescription?['prescribed_dose']?.toString() ?? '');
-    final quantity = TextEditingController(text: prescription?['quantity']?.toString() ?? '');
+    final name =
+        TextEditingController(text: prescription?['name']?.toString() ?? '');
+    final dose = TextEditingController(
+        text: prescription?['prescribed_dose']?.toString() ?? '');
+    final quantity = TextEditingController(
+        text: prescription?['quantity']?.toString() ?? '');
     final times = TextEditingController(
       text: ((prescription?['intake_times'] as List?) ?? []).join(', '),
     );
-    final instructions = TextEditingController(text: prescription?['instructions']?.toString() ?? '');
+    final instructions = TextEditingController(
+        text: prescription?['instructions']?.toString() ?? '');
     final formKey = GlobalKey<FormState>();
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(prescription == null ? 'Add prescribed medicine' : 'Edit prescribed medicine'),
+        title: Text(prescription == null
+            ? 'Add prescribed medicine'
+            : 'Edit prescribed medicine'),
         content: SingleChildScrollView(
           child: Form(
             key: formKey,
@@ -2988,14 +3226,16 @@ class _ProfileFormState extends State<ProfileForm> {
                 ),
                 TextFormField(
                   controller: dose,
-                  decoration: const InputDecoration(labelText: 'Doctor-prescribed dose'),
+                  decoration: const InputDecoration(
+                      labelText: 'Doctor-prescribed dose'),
                   validator: (value) => value == null || value.trim().isEmpty
                       ? 'Enter the dose as written by the doctor.'
                       : null,
                 ),
                 TextFormField(
                   controller: quantity,
-                  decoration: const InputDecoration(labelText: 'Quantity per intake'),
+                  decoration:
+                      const InputDecoration(labelText: 'Quantity per intake'),
                   validator: (value) => value == null || value.trim().isEmpty
                       ? 'Enter the prescribed quantity per intake.'
                       : null,
@@ -3007,9 +3247,11 @@ class _ProfileFormState extends State<ProfileForm> {
                     hintText: '08:00, 20:00',
                   ),
                   validator: (value) {
-                    if (value == null || value.trim().isEmpty) return 'Enter at least one time.';
+                    if (value == null || value.trim().isEmpty)
+                      return 'Enter at least one time.';
                     final parsed = value.split(',').map((item) => item.trim());
-                    return parsed.every((item) => RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(item))
+                    return parsed.every((item) =>
+                            RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(item))
                         ? null
                         : 'Use 24-hour times, separated by commas.';
                   },
@@ -3017,26 +3259,28 @@ class _ProfileFormState extends State<ProfileForm> {
                 TextField(
                   controller: instructions,
                   maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Doctor instructions'),
+                  decoration:
+                      const InputDecoration(labelText: 'Doctor instructions'),
                 ),
               ],
             ),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           FilledButton(
             onPressed: () {
               if (!formKey.currentState!.validate()) return;
               Navigator.pop(context, {
-                'id': prescription?['id'] ?? DateTime.now().microsecondsSinceEpoch.toString(),
+                'id': prescription?['id'] ??
+                    DateTime.now().microsecondsSinceEpoch.toString(),
                 'name': name.text.trim(),
                 'prescribed_dose': dose.text.trim(),
                 'quantity': quantity.text.trim(),
-                'intake_times': times.text
-                    .split(',')
-                    .map((item) => item.trim())
-                    .toList(),
+                'intake_times':
+                    times.text.split(',').map((item) => item.trim()).toList(),
                 'instructions': instructions.text.trim(),
               });
             },
@@ -3052,7 +3296,8 @@ class _ProfileFormState extends State<ProfileForm> {
     instructions.dispose();
     if (result == null || !mounted) return;
     setState(() {
-      final index = _prescriptions.indexWhere((item) => item['id'] == result['id']);
+      final index =
+          _prescriptions.indexWhere((item) => item['id'] == result['id']);
       if (index == -1) {
         _prescriptions = [..._prescriptions, result];
       } else {
@@ -3085,18 +3330,20 @@ class _ProfileFormState extends State<ProfileForm> {
               .map((item) => item.trim())
               .where((item) => item.isNotEmpty)
               .toList(),
-              'appetite': _appetite.text.trim(),
-              'daily_routine': _dailyRoutine.text.trim(),
-              'family_history': _familyHistory.text.trim(),
-              'prescriptions': _prescriptions,
-              'profile_image': _profileImage,
+          'appetite': _appetite.text.trim(),
+          'daily_routine': _dailyRoutine.text.trim(),
+          'family_history': _familyHistory.text.trim(),
+          'prescriptions': _prescriptions,
+          'profile_image': _profileImage,
         },
       );
       await ReminderNotifications.requestPermission();
       final reminders = await widget.api.request('/reminders');
-      await ReminderNotifications.sync(prescriptions: _prescriptions, reminders: List<Map<String, dynamic>>.from(
-        (reminders as List).map((e) => Map<String, dynamic>.from(e as Map)),
-      ));
+      await ReminderNotifications.sync(
+          prescriptions: _prescriptions,
+          reminders: List<Map<String, dynamic>>.from(
+            (reminders as List).map((e) => Map<String, dynamic>.from(e as Map)),
+          ));
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Profile saved.')));
@@ -3104,7 +3351,8 @@ class _ProfileFormState extends State<ProfileForm> {
       widget.onSaved();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -3138,8 +3386,11 @@ class _ProfileFormState extends State<ProfileForm> {
                   radius: 38,
                   backgroundImage: _profileImage.isEmpty
                       ? null
-                      : MemoryImage(base64Decode(_profileImage.split(',').last)),
-                  child: _profileImage.isEmpty ? const Icon(Icons.person_outline, size: 38) : null,
+                      : MemoryImage(
+                          base64Decode(_profileImage.split(',').last)),
+                  child: _profileImage.isEmpty
+                      ? const Icon(Icons.person_outline, size: 38)
+                      : null,
                 ),
                 TextButton.icon(
                   onPressed: _pickProfileImage,
@@ -3152,7 +3403,8 @@ class _ProfileFormState extends State<ProfileForm> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Account & Profile', style: Theme.of(context).textTheme.headlineSmall),
+              Text('Account & Profile',
+                  style: Theme.of(context).textTheme.headlineSmall),
               OutlinedButton.icon(
                 onPressed: widget.onOpenServerConfig,
                 icon: const Icon(Icons.dns, size: 16),
@@ -3166,7 +3418,9 @@ class _ProfileFormState extends State<ProfileForm> {
             style: const TextStyle(fontSize: 12, color: Colors.black54),
           ),
           const SizedBox(height: 14),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+          TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name')),
           const SizedBox(height: 12),
           TextField(
             enabled: false,
@@ -3181,24 +3435,34 @@ class _ProfileFormState extends State<ProfileForm> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: _gender.isEmpty ? null : _gender,
+            initialValue: _gender.isEmpty ? null : _gender,
             decoration: const InputDecoration(labelText: 'Gender'),
             items: const [
               DropdownMenuItem(value: '', child: Text('Prefer not to say')),
               DropdownMenuItem(value: 'Female', child: Text('Female')),
               DropdownMenuItem(value: 'Male', child: Text('Male')),
               DropdownMenuItem(value: 'Non-binary', child: Text('Non-binary')),
-              DropdownMenuItem(value: 'Self-describe', child: Text('Self-describe')),
+              DropdownMenuItem(
+                  value: 'Self-describe', child: Text('Self-describe')),
             ],
             onChanged: (value) => setState(() => _gender = value ?? ''),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: _bloodType.isEmpty ? null : _bloodType,
+            initialValue: _bloodType.isEmpty ? null : _bloodType,
             decoration: const InputDecoration(labelText: 'Blood type'),
             items: [
               const DropdownMenuItem(value: '', child: Text('Not provided')),
-              for (final value in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])
+              for (final value in [
+                'A+',
+                'A-',
+                'B+',
+                'B-',
+                'AB+',
+                'AB-',
+                'O+',
+                'O-'
+              ])
                 DropdownMenuItem(value: value, child: Text(value)),
             ],
             onChanged: (value) => setState(() => _bloodType = value ?? ''),
@@ -3240,47 +3504,57 @@ class _ProfileFormState extends State<ProfileForm> {
           TextField(
             controller: _appetite,
             maxLines: 2,
-            decoration: const InputDecoration(labelText: 'Appetite and meal preferences'),
+            decoration: const InputDecoration(
+                labelText: 'Appetite and meal preferences'),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _dailyRoutine,
             maxLines: 3,
-            decoration: const InputDecoration(labelText: 'Daily routine and usual meal times'),
+            decoration: const InputDecoration(
+                labelText: 'Daily routine and usual meal times'),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _familyHistory,
             maxLines: 3,
-            decoration: const InputDecoration(labelText: 'Family health history'),
+            decoration:
+                const InputDecoration(labelText: 'Family health history'),
           ),
           const SizedBox(height: 20),
-          Text('Doctor-prescribed medicines', style: Theme.of(context).textTheme.titleMedium),
+          Text('Doctor-prescribed medicines',
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           for (final prescription in _prescriptions)
             Card(
               child: ListTile(
                 title: Text(prescription['name']?.toString() ?? ''),
                 subtitle: Text([
-                  if ((prescription['prescribed_dose'] ?? '').toString().isNotEmpty)
+                  if ((prescription['prescribed_dose'] ?? '')
+                      .toString()
+                      .isNotEmpty)
                     prescription['prescribed_dose'],
                   if ((prescription['quantity'] ?? '').toString().isNotEmpty)
                     'Quantity: ${prescription['quantity']}',
                   if ((prescription['intake_times'] as List? ?? []).isNotEmpty)
                     (prescription['intake_times'] as List).join(', '),
-                  if ((prescription['instructions'] ?? '').toString().isNotEmpty)
+                  if ((prescription['instructions'] ?? '')
+                      .toString()
+                      .isNotEmpty)
                     prescription['instructions'],
                 ].join(' · ')),
                 trailing: Wrap(
                   children: [
                     IconButton(
                       tooltip: 'Edit prescription details',
-                      onPressed: () => _editPrescription(prescription: prescription),
+                      onPressed: () =>
+                          _editPrescription(prescription: prescription),
                       icon: const Icon(Icons.edit_outlined),
                     ),
                     IconButton(
                       tooltip: 'Remove prescription',
-                      onPressed: () => setState(() => _prescriptions.remove(prescription)),
+                      onPressed: () =>
+                          setState(() => _prescriptions.remove(prescription)),
                       icon: const Icon(Icons.delete_outline),
                     ),
                   ],
@@ -3315,7 +3589,8 @@ class ErrorPanel extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.cloud_off_outlined, size: 40, color: Colors.black45),
+              const Icon(Icons.cloud_off_outlined,
+                  size: 40, color: Colors.black45),
               const SizedBox(height: 12),
               const Text(
                 'Could not connect to the health server.',
