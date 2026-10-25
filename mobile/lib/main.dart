@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -566,15 +567,14 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(26),
+      body: AnimatedBackground(
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: FrostedGlassCard(
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -2574,16 +2574,14 @@ class MetricCard extends StatelessWidget {
         width: MediaQuery.sizeOf(context).width >= 760
             ? 220
             : (MediaQuery.sizeOf(context).width - 64) / 2,
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(icon, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(height: 10),
-              Text(value, style: Theme.of(context).textTheme.headlineSmall),
-              Text(label, style: Theme.of(context).textTheme.bodySmall),
-            ]),
-          ),
+        child: FrostedGlassCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(height: 10),
+            Text(value, style: Theme.of(context).textTheme.headlineSmall),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ]),
         ),
       );
 }
@@ -3420,6 +3418,103 @@ class AnimatedThemeSwitch extends StatelessWidget {
           isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
           key: ValueKey(isDarkMode),
           color: isDarkMode ? Colors.amberAccent : Colors.teal[800],
+        ),
+      ),
+    );
+  }
+}
+
+class AnimatedBackground extends StatefulWidget {
+  const AnimatedBackground({required this.child, super.key});
+  final Widget child;
+
+  @override
+  State<AnimatedBackground> createState() => _AnimatedBackgroundState();
+}
+
+class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 12),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment(-1.0 + _controller.value * 0.4, -1.0),
+              end: Alignment(1.0, 1.0 - _controller.value * 0.4),
+              colors: isDark
+                  ? [
+                      const Color(0xff121412),
+                      const Color(0xff16221d),
+                      const Color(0xff0f1a16),
+                      const Color(0xff0a0e0c),
+                    ]
+                  : [
+                      const Color(0xfff7f8f4),
+                      const Color(0xffe6f2ee),
+                      const Color(0xffeff7f4),
+                      const Color(0xfff5f7f3),
+                    ],
+            ),
+          ),
+          child: widget.child,
+        );
+      },
+    );
+  }
+}
+
+class FrostedGlassCard extends StatelessWidget {
+  const FrostedGlassCard({required this.child, this.padding = const EdgeInsets.all(24), this.margin, super.key});
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? margin;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      margin: margin,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xff1c201e).withValues(alpha: 0.72)
+                  : Colors.white.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.white.withValues(alpha: 0.85),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: child,
+          ),
         ),
       ),
     );
