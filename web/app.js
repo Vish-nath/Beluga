@@ -189,6 +189,7 @@
     const isRegister = mode === "register";
 
     appNode.innerHTML = `
+      <div class="auth-page">
       <section class="auth-layout">
         <!-- Visual Presentation Side -->
         <div class="auth-art" aria-hidden="true">
@@ -262,6 +263,54 @@
           </div>
         </div>
       </section>
+
+      <section class="auth-info" aria-labelledby="auth-info-heading">
+        <div class="auth-info-inner">
+          <header class="auth-info-heading">
+            <span class="eyebrow">A LITTLE MORE ROOM TO BREATHE</span>
+            <h2 id="auth-info-heading">Everyday health, in one clear view.</h2>
+            <p>Bring check-ins, useful reminders, and visit context together without making your routine feel complicated.</p>
+          </header>
+
+          <div class="auth-info-grid">
+            <article class="auth-info-feature">
+              <img src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=720&amp;q=75" alt="Clinician using a phone to review health information" width="720" height="480" loading="lazy" decoding="async">
+              <div class="auth-info-copy">
+                <span class="auth-info-kicker">01 / CHECK IN</span>
+                <h3>Notice your patterns</h3>
+                <p>Keep everyday health entries together so you can look back at what you have recorded.</p>
+              </div>
+            </article>
+            <article class="auth-info-feature">
+              <img src="https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&amp;fit=crop&amp;w=720&amp;q=75" alt="Person taking a quiet moment for a daily wellness routine" width="640" height="744" loading="lazy" decoding="async">
+              <div class="auth-info-copy">
+                <span class="auth-info-kicker">02 / REMIND</span>
+                <h3>Make space for routines</h3>
+                <p>Set simple reminders for the habits and tasks you want to keep close through the day.</p>
+              </div>
+            </article>
+            <article class="auth-info-feature">
+              <img src="https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?auto=format&amp;fit=crop&amp;w=720&amp;q=75" alt="Healthcare professional with a stethoscope" width="720" height="480" loading="lazy" decoding="async">
+              <div class="auth-info-copy">
+                <span class="auth-info-kicker">03 / ORGANIZE</span>
+                <h3>Keep visit details together</h3>
+                <p>Organize patient notes and visit information in one place for this project workspace.</p>
+              </div>
+            </article>
+          </div>
+
+          <aside class="auth-info-safety">
+            ${icons.shield}
+            <p><strong>Student project prototype.</strong> Use synthetic data only. Beluga does not diagnose conditions or recommend treatment.</p>
+          </aside>
+        </div>
+      </section>
+
+      <footer class="auth-site-footer">
+        <span>© ${new Date().getFullYear()} Beluga Health</span>
+        <span>Built as a student project · Use synthetic data only</span>
+      </footer>
+      </div>
     `;
 
     document.querySelector("#auth-switch-btn").addEventListener("click", () => {
