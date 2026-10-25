@@ -45,6 +45,40 @@
     shield: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
   };
 
+  function setupCustomCursor() {
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const cursor = document.createElement("span");
+    cursor.className = "custom-cursor is-hidden";
+    cursor.setAttribute("aria-hidden", "true");
+    document.body.append(cursor);
+
+    let pointerX = 0;
+    let pointerY = 0;
+    let frameId = 0;
+    document.addEventListener("pointermove", (event) => {
+      if (event.pointerType !== "mouse") return;
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+      const target = event.target instanceof Element ? event.target : null;
+      cursor.classList.toggle("is-hidden", Boolean(target?.closest("input, textarea, select, [contenteditable='true']")));
+      cursor.classList.toggle("is-interactive", Boolean(target?.closest("a, button, [role='button']")));
+
+      if (!frameId) {
+        frameId = requestAnimationFrame(() => {
+          cursor.style.transform = `translate3d(${pointerX}px, ${pointerY}px, 0) translate(-50%, -50%)`;
+          frameId = 0;
+        });
+      }
+    }, { passive: true });
+    document.addEventListener("pointerdown", () => cursor.classList.add("is-pressed"), { passive: true });
+    document.addEventListener("pointerup", () => cursor.classList.remove("is-pressed"), { passive: true });
+    document.addEventListener("pointerleave", () => cursor.classList.add("is-hidden"));
+  }
+
+  setupCustomCursor();
+
   // ==========================================
   // UTILITIES
   // ==========================================
@@ -207,6 +241,7 @@
               ${isRegister ? renderField("Full Name", "name", "text", "", "autocomplete='name' required placeholder='Your name'") : ""}
               ${renderField("Email Address", "email", "email", "", "autocomplete='email' required placeholder='you@example.com'")}
               ${renderField("Password", "password", "password", "", `autocomplete='${isRegister ? "new-password" : "current-password"}' minlength='8' required placeholder='••••••••'`)}
+              ${isRegister ? '<p class="auth-password-hint">Use at least 8 characters for your password.</p>' : ""}
               
               <button class="btn btn-primary btn-wide" type="submit" id="btn-auth-submit" style="margin-top:6px;">
                 <span>${isRegister ? "Create Account" : "Sign In to Workspace"}</span>
