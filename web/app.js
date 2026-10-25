@@ -191,25 +191,28 @@
     appNode.innerHTML = `
       <div class="auth-page">
       <section class="auth-layout">
-        <!-- Visual Presentation Side -->
-        <div class="auth-art" aria-hidden="true">
+        <section class="auth-art" aria-labelledby="auth-hero-title">
           <div class="auth-art-bg"></div>
-          <div class="auth-blob auth-blob-1"></div>
-          <div class="auth-blob auth-blob-2"></div>
-          <div class="auth-blob auth-blob-3"></div>
           <div class="auth-art-grid"></div>
-          <img class="auth-visual" src="./care-orbit.svg" alt="">
 
           <div class="auth-brand">
             <div class="auth-brand-icon">${icons.pulse}</div>
             <span>beluga<span class="auth-brand-sub"> health</span></span>
           </div>
 
-          <div class="auth-art-copy">
-            <span class="eyebrow">${icons.sparkle} YOUR HEALTH WORKSPACE</span>
-            <h1>Care feels clearer<br><span class="gradient-text">when it’s together.</span></h1>
-            <p>Keep personal health entries, daily reminders, and patient visit notes together in one simple workspace.</p>
-            
+          <div class="auth-art-main">
+            <div class="auth-art-copy">
+              <span class="eyebrow">${icons.sparkle} YOUR HEALTH WORKSPACE</span>
+              <h1 id="auth-hero-title">Care feels clearer <span>when it’s together.</span></h1>
+              <p>One calm place for personal check-ins, daily reminders, and patient visit notes.</p>
+            </div>
+            <figure class="auth-photo-frame">
+              <img class="auth-hero-photo" src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=900&amp;q=80" alt="Healthcare professional reviewing information on a phone" width="900" height="600" fetchpriority="high" decoding="async">
+              <figcaption class="auth-photo-caption"><span class="auth-photo-status"></span>Care details, all in one place</figcaption>
+            </figure>
+          </div>
+
+          <div class="auth-art-bottom">
             <div class="auth-stats">
               <div class="auth-stat">
                 <strong>Health</strong>
@@ -224,14 +227,12 @@
                 <span>Patient notes & visits</span>
               </div>
             </div>
+            <div class="auth-art-footer">
+              A STUDENT PROJECT PROTOTYPE · USE SYNTHETIC DATA ONLY
+            </div>
           </div>
+        </section>
 
-          <div class="auth-art-footer">
-            A STUDENT PROJECT PROTOTYPE · USE SYNTHETIC DATA ONLY
-          </div>
-        </div>
-
-        <!-- Auth Interactive Form Side -->
         <div class="auth-panel">
           <div class="auth-form-wrap">
             <span class="eyebrow">${isRegister ? "GET STARTED" : "YOUR BELUGA ACCOUNT"}</span>
