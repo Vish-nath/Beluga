@@ -207,7 +207,7 @@
               <p>One calm place for personal check-ins, daily reminders, and patient visit notes.</p>
             </div>
             <figure class="auth-photo-frame">
-              <img class="auth-hero-photo" src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=900&amp;q=80" alt="Healthcare professional reviewing information on a phone" width="900" height="600" fetchpriority="high" decoding="async">
+              <img class="auth-hero-photo" src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=640&amp;q=75" srcset="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=420&amp;q=70 420w, https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=760&amp;q=75 760w" sizes="(max-width: 560px) 112px, (max-width: 860px) 180px, 32vw" alt="Healthcare professional reviewing information on a phone" width="640" height="800" fetchpriority="high" decoding="async">
               <figcaption class="auth-photo-caption"><span class="auth-photo-status"></span>Care details, all in one place</figcaption>
             </figure>
           </div>
