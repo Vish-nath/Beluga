@@ -1,4 +1,16 @@
 {
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json",
+    "edition": "enterprise",
+    "database": "beluga-health",
+    "location": "asia-south1"
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true
+    }
+  },
   "functions": [
     {
       "source": "functions",
