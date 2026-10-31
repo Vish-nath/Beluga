@@ -1,779 +1,2087 @@
-const app = document.querySelector("#app");
-const toastNode = document.querySelector("#toast");
-const API = "/api";
-let token = localStorage.getItem("beluga-token");
-let currentUser = null;
-let currentProfile = null;
-let activePage = "patients";
-let activePatientId = null;
-let toastTimer;
+/* =========================================================
+   BELUGA HEALTH — WEB APPLICATION CORE (v2.0)
+   Modern, secure, reactive SPA with glassmorphism & motion
+   ========================================================= */
 
-const icons = {
-  pulse: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>',
-  home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/></svg>',
-  chart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h17M8 15l4-4 3 2 5-6"/></svg>',
-  bell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12h4"/></svg>',
-  user: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
-  plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
-  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>',
-  exit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m9-9h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></svg>',
-  arrow: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>',
-  patients: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-  search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
-  edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
-  trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
-  calendar: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
-};
+(function () {
+  "use strict";
 
-const escapeHtml = (value = "") => String(value ?? "").replace(/[&<>"']/g, (character) => ({
-  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-}[character]));
+  const appNode = document.querySelector("#app");
+  const toastContainer = document.querySelector("#toast-container");
+  const API = (document.querySelector('meta[name="beluga-api-base"]')?.content || "/api").trim().replace(/\/+$/, "");
 
-function showToast(message, error = false) {
-  toastNode.textContent = message;
-  toastNode.classList.toggle("is-error", error);
-  toastNode.classList.add("is-visible");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastNode.classList.remove("is-visible"), 3000);
-}
-
-async function request(path, options = {}) {
-  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${API}${path}`, { ...options, headers });
-  if (response.status === 204) return null;
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (response.status === 401 && token) signOut(false);
-    throw new Error(body.detail || "Something went wrong. Please try again.");
-  }
-  return body;
-}
-
-function setSession(result) {
-  token = result.access_token;
-  currentUser = result.user;
-  currentProfile = result.profile;
-  localStorage.setItem("beluga-token", token);
-  activePage = "patients";
-  render();
-}
-
-function field(label, name, type = "text", value = "", extra = "") {
-  return `<label class="field"><span>${label}</span><input name="${name}" type="${type}" value="${escapeHtml(value ?? "")}" ${extra}></label>`;
-}
-
-function authView(mode = "login") {
-  const register = mode === "register";
-  app.innerHTML = `
-    <section class="auth-layout">
-      <div class="auth-art" aria-hidden="true">
-        <a class="brand" href="#">${icons.pulse}<span>beluga<span class="brand-light"> health</span></span></a>
-        <div class="art-copy">
-          <span class="eyebrow">YOUR CLINICAL & PERSONAL HEALTH SPACE</span>
-          <h1>Small steps.<br>Better care.</h1>
-          <p>Local database & server for patient record tracking, clinical checkups, and future reference.</p>
-        </div>
-        <div class="pulse-visual"><span>01</span><div class="pulse-line">${icons.pulse}</div><span>24</span></div>
-        <span class="art-caption">LAPTOP-HOSTED SERVER & DATABASE</span>
-      </div>
-      <div class="auth-panel">
-        <div class="auth-mobile-brand brand">${icons.pulse}<span>beluga<span class="brand-light"> health</span></span></div>
-        <div class="auth-form-wrap">
-          <span class="eyebrow">${register ? "NEW CLINICIAN / USER" : "WELCOME BACK"}</span>
-          <h2>${register ? "Create your account" : "Sign in to Beluga"}</h2>
-          <p class="muted">${register ? "Create an account with your email and password." : "Sign in with your email and password."}</p>
-
-          <form id="auth-form" class="form-stack">
-            ${register ? field("Full name", "name", "text", "", "autocomplete='name' required") : ""}
-            ${field("Gmail / Email address", "email", "email", "", "autocomplete='email' placeholder='name@gmail.com' required")}
-            ${field("Password", "password", "password", "", `autocomplete='${register ? "new-password" : "current-password"}' minlength='8' required`)}
-            <button class="button button-primary button-wide" type="submit">${register ? "Create account" : "Sign in"}${icons.arrow}</button>
-          </form>
-          <p class="auth-switch">${register ? "Already have an account?" : "New to Beluga?"} <button class="text-button" id="auth-toggle">${register ? "Sign in" : "Create an account"}</button></p>
-          <p class="privacy-note">The app administrator can view account health records. This prototype is not for real health data.</p>
-        </div>
-        <span class="auth-foot">BELUGA HEALTH · LOCAL SERVER & DATABASE</span>
-      </div>
-    </section>`;
-
-  document.querySelector("#auth-toggle").addEventListener("click", () => authView(register ? "login" : "register"));
-
-  document.querySelector("#auth-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const payload = Object.fromEntries(form.entries());
-    const submitButton = event.currentTarget.querySelector("button[type=submit]");
-    submitButton.disabled = true;
-    try {
-      setSession(await request(register ? "/register" : "/login", { method: "POST", body: JSON.stringify(payload) }));
-    } catch (error) {
-      showToast(error.message, true);
-      submitButton.disabled = false;
-    }
-  });
-}
-
-function navItem(page, label, icon) {
-  return `<button class="nav-item ${activePage === page ? "is-active" : ""}" data-page="${page}">${icon}<span>${label}</span>${activePage === page ? '<i></i>' : ""}</button>`;
-}
-
-function shell(content) {
-  const initials = (currentUser?.name?.trim() || "U")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase() || "U";
-  app.innerHTML = `
-    <div class="app-shell">
-      <aside class="sidebar">
-        <a class="brand" href="#" aria-label="Beluga Health home">${icons.pulse}<span>beluga<span class="brand-light"> health</span></span></a>
-        <span class="nav-label">DATABASE & CLINICAL</span>
-        <nav>
-          ${navItem("patients", "Patients", icons.patients)}
-          ${navItem("overview", "Overview", icons.home)}
-          ${navItem("measurements", "My health", icons.chart)}
-          ${navItem("reminders", "Reminders", icons.bell)}
-          ${navItem("profile", "Profile", icons.user)}
-        </nav>
-        <div class="sidebar-bottom">
-          <div class="privacy-chip"><span></span>PC Local Database</div>
-          <button id="sign-out" class="sign-out">${icons.exit}<span>Sign out</span></button>
-        </div>
-      </aside>
-      <div class="workspace">
-        <header class="topbar">
-          <div>
-            <span class="topbar-date">${new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(new Date())}</span>
-            <span class="connection"><i></i>Beluga Local Database</span>
-          </div>
-          <button class="avatar" data-page="profile" aria-label="Open profile">${escapeHtml(initials)}</button>
-        </header>
-        <main class="page-content">${content}</main>
-      </div>
-      <nav class="mobile-nav" aria-label="Main navigation">
-        ${navItem("patients", "Patients", icons.patients)}
-        ${navItem("overview", "Home", icons.home)}
-        ${navItem("measurements", "Health", icons.chart)}
-        ${navItem("reminders", "Reminders", icons.bell)}
-        ${navItem("profile", "Profile", icons.user)}
-      </nav>
-    </div>`;
-  document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.page)));
-  document.querySelector("#sign-out").addEventListener("click", () => signOut());
-}
-
-async function navigate(page, patientId = null) {
-  activePage = page;
-  activePatientId = patientId;
-  await render();
-}
-
-// ==========================================
-// PATIENTS MANAGEMENT VIEW (WEB)
-// ==========================================
-
-async function renderPatients(query = "") {
-  const url = query ? `/patients?q=${encodeURIComponent(query)}` : "/patients";
-  const patients = await request(url);
-  shell(`
-    <section class="page-heading">
-      <div>
-        <span class="eyebrow">PATIENT DATABASE</span>
-        <h1>Patients & Medical Records</h1>
-        <p class="muted">Store, modify, and track patient data and clinical checkups for future reference.</p>
-      </div>
-      <button class="button button-primary" id="btn-add-patient">${icons.plus}<span>Add new patient</span></button>
-    </section>
-
-    <div class="patient-header-bar">
-      <div class="search-box">
-        ${icons.search}
-        <input type="text" id="patient-search" placeholder="Search patients by name, ID, phone, condition..." value="${escapeHtml(query)}">
-      </div>
-      <span class="history-count">${patients.length} ${patients.length === 1 ? 'patient' : 'patients'} registered</span>
-    </div>
-
-    ${patients.length ? `
-      <div class="patients-grid">
-        ${patients.map(p => `
-          <div class="patient-card" data-patient-id="${p.patient_id}">
-            <div>
-              <div class="patient-top">
-                <div>
-                  <h3 class="patient-name">${escapeHtml(p.name)}</h3>
-                  <span class="patient-id">${escapeHtml(p.patient_id)}</span>
-                </div>
-                <span class="tag tag-blue">${escapeHtml(p.blood_group || 'Blood N/A')}</span>
-              </div>
-              <p class="muted" style="font-size:12px;margin:8px 0 0;">${p.age} years · ${escapeHtml(p.gender)}</p>
-              ${p.phone ? `<p style="font-size:12px;margin:4px 0 0;color:#555;">📞 ${escapeHtml(p.phone)}</p>` : ''}
-              
-              <div class="patient-tags">
-                ${(p.chronic_conditions || []).map(c => `<span class="tag">${escapeHtml(c)}</span>`).join('')}
-                ${(p.allergies || []).map(a => `<span class="tag tag-alert">Allergy: ${escapeHtml(a)}</span>`).join('')}
-              </div>
-            </div>
-            <div class="patient-foot">
-              <span>${p.visit_count} visit record(s)</span>
-              <span style="color:var(--green);font-weight:600;">View & Modify ${icons.arrow}</span>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    ` : `
-      <div class="empty-state">
-        <div class="empty-mark">${icons.patients}</div>
-        <strong>No patients found</strong>
-        <span>Add a patient record to manage their health data and checkups.</span>
-        <button class="button button-primary" style="margin-top:12px;" id="btn-empty-add-patient">${icons.plus}<span>Add First Patient</span></button>
-      </div>
-    `}
-  `);
-
-  const searchInput = document.querySelector("#patient-search");
-  let searchDebounce;
-  searchInput.addEventListener("input", (e) => {
-    clearTimeout(searchDebounce);
-    const val = e.target.value;
-    searchDebounce = setTimeout(async () => {
-      await renderPatients(val.trim());
-      const newSearchInput = document.querySelector("#patient-search");
-      if (newSearchInput) {
-        newSearchInput.focus();
-        newSearchInput.setSelectionRange(newSearchInput.value.length, newSearchInput.value.length);
-      }
-    }, 300);
-  });
-
-  document.querySelectorAll("[data-patient-id]").forEach(card => {
-    card.addEventListener("click", () => navigate("patient-detail", card.dataset.patientId));
-  });
-
-  const openAdd = () => openPatientModal();
-  document.querySelector("#btn-add-patient")?.addEventListener("click", openAdd);
-  document.querySelector("#btn-empty-add-patient")?.addEventListener("click", openAdd);
-}
-
-// ==========================================
-// PATIENT DETAIL & VISITS VIEW (WEB)
-// ==========================================
-
-async function renderPatientDetail(patientId) {
-  const patient = await request(`/patients/${patientId}`);
-  const visits = patient.visits || [];
-
-  shell(`
-    <section class="page-heading">
-      <div>
-        <button class="inline-action" id="btn-back-patients" style="margin-bottom:8px;">← Back to Patients list</button>
-        <div style="display:flex;align-items:center;gap:12px;">
-          <h1>${escapeHtml(patient.name)}</h1>
-          <span class="patient-id" style="font-size:14px;padding:4px 10px;">${escapeHtml(patient.patient_id)}</span>
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;">
-        <button class="button button-secondary" id="btn-edit-patient">${icons.edit}<span>Modify Patient Data</span></button>
-        <button class="button button-primary" id="btn-add-visit">${icons.plus}<span>Add Medical Record</span></button>
-      </div>
-    </section>
-
-    <div class="detail-layout">
-      <!-- Profile Card -->
-      <div class="patient-profile-card">
-        <h3 style="margin-top:0;font-size:16px;">Demographics & Profile</h3>
-        <div class="profile-meta-row"><span>Age / Gender</span><strong>${patient.age} yrs · ${escapeHtml(patient.gender)}</strong></div>
-        <div class="profile-meta-row"><span>Blood Group</span><strong>${escapeHtml(patient.blood_group || 'Not provided')}</strong></div>
-        <div class="profile-meta-row"><span>Phone</span><strong>${escapeHtml(patient.phone || '—')}</strong></div>
-        <div class="profile-meta-row"><span>Email</span><strong>${escapeHtml(patient.email || '—')}</strong></div>
-        <div class="profile-meta-row"><span>Emergency Contact</span><strong>${escapeHtml(patient.emergency_contact || '—')}</strong></div>
-        <div class="profile-meta-row"><span>Address</span><strong>${escapeHtml(patient.address || '—')}</strong></div>
-
-        <div style="margin-top:16px;">
-          <h4 style="margin:0 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;">Chronic Conditions</h4>
-          <div class="patient-tags">
-            ${(patient.chronic_conditions || []).length ? patient.chronic_conditions.map(c => `<span class="tag">${escapeHtml(c)}</span>`).join('') : '<span class="muted">None recorded</span>'}
-          </div>
-        </div>
-
-        <div style="margin-top:12px;">
-          <h4 style="margin:0 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;">Allergies</h4>
-          <div class="patient-tags">
-            ${(patient.allergies || []).length ? patient.allergies.map(a => `<span class="tag tag-alert">⚠️ ${escapeHtml(a)}</span>`).join('') : '<span class="muted">No known allergies</span>'}
-          </div>
-        </div>
-
-        <div style="margin-top:12px;">
-          <h4 style="margin:0 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;">Current Medications</h4>
-          <div class="patient-tags">
-            ${(patient.current_medications || []).length ? patient.current_medications.map(m => `<span class="tag tag-blue">💊 ${escapeHtml(m)}</span>`).join('') : '<span class="muted">None</span>'}
-          </div>
-        </div>
-
-        ${patient.notes ? `
-          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">
-            <h4 style="margin:0 0 4px;font-size:12px;color:var(--muted);text-transform:uppercase;">Clinical Notes</h4>
-            <p style="font-size:13px;line-height:1.5;margin:0;">${escapeHtml(patient.notes)}</p>
-          </div>
-        ` : ''}
-
-        <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);">
-          <button class="text-button" id="btn-delete-patient" style="color:#d32f2f;">Delete Patient Record</button>
-        </div>
-      </div>
-
-      <!-- Medical History & Visits Timeline -->
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <h3 style="margin:0;font-size:18px;">Medical History & Visits (${visits.length})</h3>
-          <span class="muted" style="font-size:12px;">Historical data retained for future reference</span>
-        </div>
-
-        ${visits.length ? `
-          <div class="visit-list">
-            ${visits.map(v => `
-              <div class="visit-card">
-                <div class="visit-top">
-                  <span class="visit-date">${icons.calendar} ${escapeHtml(v.visit_date)}</span>
-                  ${v.next_followup ? `<span class="tag tag-blue">Next Follow-up: ${escapeHtml(v.next_followup)}</span>` : ''}
-                </div>
-
-                ${v.chief_complaint ? `<h4 style="margin:4px 0 6px;font-size:15px;">Complaint: ${escapeHtml(v.chief_complaint)}</h4>` : ''}
-                ${v.diagnosis ? `<p style="margin:0 0 8px;color:var(--green-deep);font-weight:600;font-size:13px;">Diagnosis: ${escapeHtml(v.diagnosis)}</p>` : ''}
-
-                <div class="vitals-bar">
-                  ${v.systolic_bp && v.diastolic_bp ? `<div class="vital-chip"><small>Blood Pressure</small><strong>${v.systolic_bp}/${v.diastolic_bp} mmHg</strong></div>` : ''}
-                  ${v.fasting_glucose ? `<div class="vital-chip"><small>Fasting Glucose</small><strong>${v.fasting_glucose} mg/dL</strong></div>` : ''}
-                  ${v.heart_rate ? `<div class="vital-chip"><small>Heart Rate</small><strong>${v.heart_rate} bpm</strong></div>` : ''}
-                  ${v.temperature ? `<div class="vital-chip"><small>Temp</small><strong>${v.temperature} °C</strong></div>` : ''}
-                  ${v.weight_kg ? `<div class="vital-chip"><small>Weight</small><strong>${v.weight_kg} kg</strong></div>` : ''}
-                </div>
-
-                ${(v.prescriptions || []).length ? `
-                  <div style="margin-top:10px;">
-                    <strong style="font-size:11px;text-transform:uppercase;color:var(--muted);">Prescriptions:</strong>
-                    ${v.prescriptions.map(rx => `<div class="rx-item">💊 <span>${escapeHtml(rx)}</span></div>`).join('')}
-                  </div>
-                ` : ''}
-
-                ${v.clinical_notes ? `
-                  <div style="margin-top:10px;font-size:12px;font-style:italic;color:#444;">
-                    "${escapeHtml(v.clinical_notes)}"
-                  </div>
-                ` : ''}
-              </div>
-            `).join('')}
-          </div>
-        ` : `
-          <div class="empty-state">
-            <div class="empty-mark">${icons.chart}</div>
-            <strong>No medical records yet</strong>
-            <span>Add a checkup record with symptoms, vitals, prescriptions, and notes.</span>
-            <button class="button button-primary" style="margin-top:12px;" id="btn-empty-add-visit">${icons.plus}<span>Add First Record</span></button>
-          </div>
-        `}
-      </div>
-    </div>
-  `);
-
-  document.querySelector("#btn-back-patients")?.addEventListener("click", () => navigate("patients"));
-  document.querySelector("#btn-edit-patient")?.addEventListener("click", () => openPatientModal(patient));
-  document.querySelector("#btn-add-visit")?.addEventListener("click", () => openVisitModal(patient.patient_id));
-  document.querySelector("#btn-empty-add-visit")?.addEventListener("click", () => openVisitModal(patient.patient_id));
-
-  document.querySelector("#btn-delete-patient")?.addEventListener("click", async () => {
-    if (!confirm(`Are you sure you want to delete patient '${patient.name}' and all associated records?`)) return;
-    try {
-      await request(`/patients/${patient.patient_id}`, { method: "DELETE" });
-      showToast("Patient record deleted.");
-      navigate("patients");
-    } catch (err) {
-      showToast(err.message, true);
-    }
-  });
-}
-
-function openPatientModal(existing = null) {
-  const modal = document.createElement("div");
-  modal.className = "modal-backdrop";
-  modal.innerHTML = `
-    <div class="modal-dialog">
-      <div class="modal-top">
-        <h3>${existing ? "Modify Patient Data" : "Add New Patient"}</h3>
-        <button class="modal-close">&times;</button>
-      </div>
-      <form id="modal-patient-form" class="form-stack">
-        ${field("Full Name *", "name", "text", existing?.name || "", "required")}
-        <div class="form-grid">
-          ${field("Patient ID (auto if empty)", "patient_id", "text", existing?.patient_id || "", "placeholder='e.g. PAT-1001'")}
-          ${field("Age *", "age", "number", existing?.age || "", "min='0' max='150' required")}
-        </div>
-        <div class="form-grid">
-          <label class="field"><span>Gender</span>
-            <select name="gender">
-              <option value="Female" ${existing?.gender === 'Female' ? 'selected' : ''}>Female</option>
-              <option value="Male" ${existing?.gender === 'Male' ? 'selected' : ''}>Male</option>
-              <option value="Other" ${existing?.gender === 'Other' ? 'selected' : ''}>Other</option>
-            </select>
-          </label>
-          <label class="field"><span>Blood Group</span>
-            <select name="blood_group">
-              <option value="">Not known</option>
-              ${['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => `<option value="${bg}" ${existing?.blood_group === bg ? 'selected' : ''}>${bg}</option>`).join('')}
-            </select>
-          </label>
-        </div>
-        <div class="form-grid">
-          ${field("Phone Number", "phone", "tel", existing?.phone || "")}
-          ${field("Email Address", "email", "email", existing?.email || "")}
-        </div>
-        <div class="form-grid">
-          ${field("Emergency Contact", "emergency_contact", "text", existing?.emergency_contact || "")}
-          ${field("Address", "address", "text", existing?.address || "")}
-        </div>
-        ${field("Chronic Conditions (comma separated)", "chronic_conditions", "text", (existing?.chronic_conditions || []).join(', '), "placeholder='Diabetes, Hypertension, Asthma'")}
-        ${field("Allergies (comma separated)", "allergies", "text", (existing?.allergies || []).join(', '), "placeholder='Penicillin, Peanuts'")}
-        ${field("Current Medications (comma separated)", "current_medications", "text", (existing?.current_medications || []).join(', '), "placeholder='Metformin 500mg, Lisinopril 10mg'")}
-        <label class="field"><span>Clinical Notes</span><textarea name="notes" rows="2" placeholder="General observations or history">${escapeHtml(existing?.notes || '')}</textarea></label>
-        <button class="button button-primary button-wide" type="submit">${existing ? "Save Changes" : "Create Patient"}</button>
-      </form>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  const close = () => modal.remove();
-  modal.querySelector(".modal-close").addEventListener("click", close);
-  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
-
-  modal.querySelector("#modal-patient-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const data = Object.fromEntries(new FormData(e.currentTarget).entries());
-    const payload = {
-      patient_id: data.patient_id.trim() || null,
-      name: data.name.trim(),
-      age: Number(data.age),
-      gender: data.gender,
-      blood_group: data.blood_group,
-      phone: data.phone.trim(),
-      email: data.email.trim(),
-      address: data.address.trim(),
-      emergency_contact: data.emergency_contact.trim(),
-      chronic_conditions: data.chronic_conditions.split(',').map(s => s.trim()).filter(Boolean),
-      allergies: data.allergies.split(',').map(s => s.trim()).filter(Boolean),
-      current_medications: data.current_medications.split(',').map(s => s.trim()).filter(Boolean),
-      notes: data.notes.trim(),
-    };
-
-    try {
-      if (existing) {
-        await request(`/patients/${existing.patient_id}`, { method: "PUT", body: JSON.stringify(payload) });
-        showToast("Patient record updated.");
-        close();
-        renderPatientDetail(payload.patient_id || existing.patient_id);
-      } else {
-        const created = await request("/patients", { method: "POST", body: JSON.stringify(payload) });
-        showToast("New patient created.");
-        close();
-        renderPatientDetail(created.patient_id);
-      }
-    } catch (err) {
-      showToast(err.message, true);
-    }
-  });
-}
-
-function openVisitModal(patientId) {
-  const modal = document.createElement("div");
-  modal.className = "modal-backdrop";
-  const today = new Date().toISOString().substring(0, 10);
-  modal.innerHTML = `
-    <div class="modal-dialog">
-      <div class="modal-top">
-        <h3>Add Medical Checkup / Record</h3>
-        <button class="modal-close">&times;</button>
-      </div>
-      <form id="modal-visit-form" class="form-stack">
-        <div class="form-grid">
-          ${field("Visit Date *", "visit_date", "date", today, "required")}
-          ${field("Next Follow-up (optional)", "next_followup", "date", "")}
-        </div>
-        ${field("Chief Complaint / Symptoms *", "chief_complaint", "text", "", "placeholder='e.g. Headache, high fever' required")}
-        ${field("Diagnosis / Assessment", "diagnosis", "text", "", "placeholder='e.g. Stage 1 Hypertension'")}
-        <div class="form-grid">
-          ${field("Systolic BP (mmHg)", "systolic_bp", "number", "", "min='30' max='300'")}
-          ${field("Diastolic BP (mmHg)", "diastolic_bp", "number", "", "min='20' max='200'")}
-        </div>
-        <div class="form-grid">
-          ${field("Fasting Glucose (mg/dL)", "fasting_glucose", "number", "", "min='10' max='1000' step='0.1'")}
-          ${field("Heart Rate (bpm)", "heart_rate", "number", "", "min='20' max='250'")}
-        </div>
-        <div class="form-grid">
-          ${field("Temperature (°C)", "temperature", "number", "", "min='25' max='45' step='0.1'")}
-          ${field("Weight (kg)", "weight_kg", "number", "", "min='1' max='400' step='0.1'")}
-        </div>
-        ${field("Prescriptions (comma separated)", "prescriptions", "text", "", "placeholder='e.g. Metformin 500mg, Paracetamol 500mg'")}
-        <label class="field"><span>Clinical Notes & Advice</span><textarea name="clinical_notes" rows="2" placeholder="Lifestyle advice, test results, doctor remarks"></textarea></label>
-        <button class="button button-primary button-wide" type="submit">Save Medical Record</button>
-      </form>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  const close = () => modal.remove();
-  modal.querySelector(".modal-close").addEventListener("click", close);
-  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
-
-  modal.querySelector("#modal-visit-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const data = Object.fromEntries(new FormData(e.currentTarget).entries());
-    const payload = {
-      visit_date: data.visit_date,
-      chief_complaint: data.chief_complaint.trim(),
-      diagnosis: data.diagnosis.trim(),
-      systolic_bp: data.systolic_bp ? Number(data.systolic_bp) : null,
-      diastolic_bp: data.diastolic_bp ? Number(data.diastolic_bp) : null,
-      fasting_glucose: data.fasting_glucose ? Number(data.fasting_glucose) : null,
-      heart_rate: data.heart_rate ? Number(data.heart_rate) : null,
-      temperature: data.temperature ? Number(data.temperature) : null,
-      weight_kg: data.weight_kg ? Number(data.weight_kg) : null,
-      prescriptions: data.prescriptions.split(',').map(s => s.trim()).filter(Boolean),
-      clinical_notes: data.clinical_notes.trim(),
-      next_followup: data.next_followup || null,
-    };
-
-    try {
-      await request(`/patients/${patientId}/visits`, { method: "POST", body: JSON.stringify(payload) });
-      showToast("Medical visit recorded.");
-      close();
-      renderPatientDetail(patientId);
-    } catch (err) {
-      showToast(err.message, true);
-    }
-  });
-}
-
-// ==========================================
-// OVERVIEW, MEASUREMENTS, REMINDERS, PROFILE
-// ==========================================
-
-async function renderOverview() {
-  const data = await request("/dashboard");
-  currentProfile = data.profile;
-  const latest = data.latest_measurement || {};
-  const todaySteps = latest.steps;
-  const dataset = data.dataset;
-  const reminders = data.reminders || [];
-  const readings = data.measurements || [];
-  const patientsCount = data.patients_count || 0;
-  const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
-
-  shell(`
-    <section class="page-heading">
-      <div>
-        <span class="eyebrow">YOUR HEALTH DATABASE</span>
-        <h1>${greeting}, ${escapeHtml(currentUser?.name?.split(" ")[0] || data.name)}</h1>
-        <p class="muted">Local server and database for clinical records & daily check-ins.</p>
-      </div>
-      <button class="button button-primary" data-page="patients">${icons.patients}<span>Manage Patients</span></button>
-    </section>
-
-    <!-- Quick Patient Banner -->
-    <div style="background:var(--green-wash);border:1px solid #d2e4d9;border-radius:8px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-      <div>
-        <h3 style="margin:0 0 4px;color:var(--green-deep);font-size:16px;">${patientsCount} Patient(s) In Local Database</h3>
-        <p style="margin:0;font-size:13px;color:#335b49;">Manage patient records, update diagnoses, and save checkups for future reference.</p>
-      </div>
-      <button class="button button-primary" data-page="patients">Open Patients List ${icons.arrow}</button>
-    </div>
-
-    <section class="metric-grid" aria-label="Latest health metrics">
-      <article class="metric-card metric-green"><div class="metric-top"><span>Steps</span><span class="metric-icon">${icons.chart}</span></div><strong>${todaySteps == null ? "—" : Number(todaySteps).toLocaleString()}</strong><div class="metric-foot">${todaySteps == null ? "Log personal activity" : `Daily activity logged`}</div><div class="progress-track"><i style="width:${todaySteps ? 100 : 0}%"></i></div></article>
-      <article class="metric-card metric-coral"><div class="metric-top"><span>Active time</span><span class="metric-glyph">↗</span></div><strong>${latest.active_minutes == null ? "—" : `${latest.active_minutes}<small> min</small>`}</strong><div class="metric-foot">${latest.active_minutes == null ? "No activity logged" : "Minutes in latest entry"}</div><div class="metric-rule"></div></article>
-      <article class="metric-card metric-blue"><div class="metric-top"><span>Sleep</span><span class="metric-glyph">◒</span></div><strong>${latest.sleep_hours == null ? "—" : `${latest.sleep_hours}<small> hrs</small>`}</strong><div class="metric-foot">${latest.sleep_hours == null ? "No sleep logged" : "Hours in latest entry"}</div><div class="metric-rule"></div></article>
-      <article class="metric-card metric-yellow"><div class="metric-top"><span>Body mass index</span><span class="metric-glyph">⌁</span></div><strong>${currentProfile?.bmi ?? "—"}</strong><div class="metric-foot">${currentProfile?.height_cm && currentProfile?.weight_kg ? "Calculated from profile" : "Add height and weight in profile"}</div><div class="metric-rule"></div></article>
-    </section>
-
-    <section class="overview-grid">
-      <article class="section-panel trend-panel"><div class="section-title"><div><span class="eyebrow">RECENT CHECK-INS</span><h2>Personal Health readings</h2></div><button class="inline-action" data-page="measurements">See log ${icons.arrow}</button></div>
-        ${readings.length ? `<div class="reading-table"><div class="reading-row reading-head"><span>Date</span><span>Glucose</span><span>Blood pressure</span></div>${readings.slice(0, 5).map((reading) => `<div class="reading-row"><span>${new Date(reading.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span><span>${reading.fasting_glucose == null ? "—" : `${reading.fasting_glucose} <small>mg/dL</small>`}</span><span>${reading.systolic_bp != null && reading.diastolic_bp != null ? `${reading.systolic_bp}/${reading.diastolic_bp} <small>mmHg</small>` : (reading.systolic_bp ?? reading.diastolic_bp ?? "—")}</span></div>`).join("")}</div>` : `<div class="empty-state"><div class="empty-mark">${icons.chart}</div><strong>No personal check-ins yet</strong><button class="text-button" data-action="log">Add check-in ${icons.arrow}</button></div>`}
-      </article>
-      <article class="section-panel reminder-panel"><div class="section-title"><div><span class="eyebrow">DAILY ROUTINE</span><h2>Today's reminders</h2></div><button class="icon-button" data-action="new-reminder" aria-label="Add reminder">${icons.plus}</button></div>
-        ${reminders.length ? `<div class="reminder-list">${reminders.slice(0, 4).map(reminderRow).join("")}</div>` : `<div class="empty-state compact"><div class="empty-mark warm">${icons.bell}</div><strong>No reminders</strong></div>`}
-      </article>
-    </section>
-  `);
-  bindDashboardActions();
-}
-
-function reminderRow(reminder) {
-  return `<div class="reminder-row"><button class="reminder-check ${reminder.completed_today ? "is-done" : ""}" data-complete="${reminder.id}" aria-label="${reminder.completed_today ? "Completed" : "Mark complete"}" ${reminder.completed_today ? "disabled" : ""}>${icons.check}</button><div class="reminder-copy"><strong>${escapeHtml(reminder.title)}</strong><span>${escapeHtml(reminder.instruction || "Daily reminder")}</span></div><time>${escapeHtml(reminder.scheduled_time)}</time></div>`;
-}
-
-function bindDashboardActions() {
-  document.querySelectorAll("[data-action='log']").forEach((b) => b.addEventListener("click", () => navigate("measurements")));
-  document.querySelectorAll("[data-action='new-reminder']").forEach((b) => b.addEventListener("click", () => navigate("reminders")));
-  document.querySelectorAll("[data-complete]").forEach((button) => button.addEventListener("click", async () => {
-    try {
-      await request(`/reminders/${button.dataset.complete}/complete`, { method: "POST" });
-      showToast("Reminder marked complete.");
-      await renderOverview();
-    } catch (error) { showToast(error.message, true); }
-  }));
-}
-
-async function renderMeasurements() {
-  const data = await request("/dashboard");
-  const readings = data.measurements || [];
-  shell(`
-    <section class="page-heading"><div><span class="eyebrow">YOUR HEALTH LOG</span><h1>Daily Check-ins</h1><p class="muted">Record personal metrics and vitals.</p></div></section>
-    <section class="health-layout">
-      <article class="section-panel entry-panel"><div class="section-title"><div><span class="eyebrow">NEW ENTRY</span><h2>Log measurements</h2></div><span class="date-stamp">${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></div>
-        <form id="measurement-form" class="form-stack">
-          <div class="form-grid">${field("Steps", "steps", "number", "", "min='0' max='200000' placeholder='e.g. 4200'")}${field("Active minutes", "active_minutes", "number", "", "min='0' max='1440' placeholder='e.g. 30'")}</div>
-          <div class="form-grid">${field("Sleep", "sleep_hours", "number", "", "min='0' max='24' step='0.1' placeholder='Hours')}${field("Fasting glucose", "fasting_glucose", "number", "", "min='20' max='1000' step='0.1' placeholder='mg/dL'")}</div>
-          <div class="form-grid">${field("Systolic pressure", "systolic_bp", "number", "", "min='50' max='300' placeholder='mmHg'")}${field("Diastolic pressure", "diastolic_bp", "number", "", "min='30' max='200' placeholder='mmHg'")}</div>
-          <button class="button button-primary" type="submit">Save check-in ${icons.arrow}</button>
-        </form>
-      </article>
-      <aside class="guidance-panel"><span class="guidance-icon">${icons.pulse}</span><span class="eyebrow">NOTE</span><h2>Vitals Tracking</h2><p>Measurements are saved directly to your local database.</p></aside>
-    </section>
-    <article class="section-panel history-panel" style="margin-top:20px;"><div class="section-title"><div><span class="eyebrow">HISTORY</span><h2>Recent personal entries</h2></div><span class="history-count">${readings.length} entries</span></div>
-      ${readings.length ? `<div class="history-table"><div class="history-row history-head"><span>Date</span><span>Steps</span><span>Active</span><span>Sleep</span><span>Glucose</span><span>Blood pressure</span></div>${readings.map((reading) => `<div class="history-row"><span>${new Date(reading.recorded_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span><span>${reading.steps?.toLocaleString() ?? "—"}</span><span>${reading.active_minutes == null ? "—" : `${reading.active_minutes} min`}</span><span>${reading.sleep_hours == null ? "—" : `${reading.sleep_hours} hrs`}</span><span>${reading.fasting_glucose == null ? "—" : `${reading.fasting_glucose} mg/dL`}</span><span>${reading.systolic_bp != null && reading.diastolic_bp != null ? `${reading.systolic_bp}/${reading.diastolic_bp}` : (reading.systolic_bp ?? reading.diastolic_bp ?? "—")}</span></div>`).join("")}</div>` : `<div class="empty-history">Your saved check-ins will appear here.</div>`}
-    </article>
-  `);
-
-  document.querySelector("#measurement-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
-    const payload = Object.fromEntries(Object.entries(values).filter(([, value]) => value !== "").map(([key, value]) => [key, Number(value)]));
-    if (!Object.keys(payload).length) return showToast("Enter at least one measurement.", true);
-    try {
-      await request("/measurements", { method: "POST", body: JSON.stringify(payload) });
-      showToast("Check-in saved.");
-      await renderMeasurements();
-    } catch (error) { showToast(error.message, true); }
-  });
-}
-
-async function renderReminders() {
-  const reminders = await request("/reminders");
-  shell(`
-    <section class="page-heading"><div><span class="eyebrow">YOUR SCHEDULE</span><h1>Reminders</h1><p class="muted">Keep routine checkups and medications on schedule.</p></div></section>
-    <section class="reminder-layout">
-      <article class="section-panel reminder-manager"><div class="section-title"><div><span class="eyebrow">DAILY ROUTINE</span><h2>Active Reminders</h2></div><span class="history-count">${reminders.length} active</span></div>
-        ${reminders.length ? `<div class="managed-reminders">${reminders.map((item) => `<div class="managed-row"><div class="managed-time">${escapeHtml(item.scheduled_time)}</div><div class="managed-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.instruction || "Personal reminder")}</span></div><button class="delete-button" data-delete="${item.id}" title="Remove reminder">×</button></div>`).join("")}</div>` : `<div class="empty-history">Create a reminder to add it to your daily routine.</div>`}
-      </article>
-      <article class="section-panel reminder-form-panel"><div class="section-title"><div><span class="eyebrow">ADD NEW</span><h2>Create reminder</h2></div></div>
-        <form id="reminder-form" class="form-stack">${field("Title", "title", "text", "", "placeholder='e.g. Patient follow-up' required")}${field("Time", "scheduled_time", "time", "08:00", "required")}<label class="field"><span>Note</span><input name="instruction" placeholder="Short note"></label><button class="button button-primary button-wide" type="submit">Add reminder ${icons.plus}</button></form>
-      </article>
-    </section>
-  `);
-  document.querySelector("#reminder-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
-    try {
-      await request("/reminders", { method: "POST", body: JSON.stringify(payload) });
-      showToast("Reminder added.");
-      await renderReminders();
-    } catch (error) { showToast(error.message, true); }
-  });
-  document.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {
-    try {
-      await request(`/reminders/${button.dataset.delete}`, { method: "DELETE" });
-      showToast("Reminder removed.");
-      await renderReminders();
-    } catch (error) { showToast(error.message, true); }
-  }));
-}
-
-async function renderProfile() {
-  const data = await request("/me");
-  currentUser = data.user;
-  currentProfile = data.profile;
-  const profile = data.profile || {};
-  shell(`
-    <section class="page-heading"><div><span class="eyebrow">YOUR ACCOUNT</span><h1>User Profile</h1><p class="muted">Beluga Database & Server credentials.</p></div></section>
-    <section class="profile-layout">
-      <article class="section-panel profile-panel"><div class="section-title"><div><span class="eyebrow">ABOUT YOU</span><h2>Account details</h2></div><span class="profile-badge">${escapeHtml(currentUser.email)}</span></div>
-        <form id="profile-form" class="form-stack"><div class="form-grid">${field("Full name", "name", "text", currentUser.name, "required")}${field("Gmail / Email address", "email", "email", currentUser.email, "disabled")}</div><div class="form-grid">${field("Age", "age", "number", profile.age ?? "")}<label class="field"><span>Gender</span><select name="gender"><option value="">Prefer not to say</option>${["Female", "Male", "Non-binary", "Self-describe"].map((v) => `<option ${profile.gender === v ? "selected" : ""}>${v}</option>`).join("")}</select></label></div><div class="form-grid"><label class="field"><span>Blood type</span><select name="blood_type"><option value="">Not provided</option>${["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((v) => `<option value="${v}" ${profile.blood_type === v ? "selected" : ""}>${v}</option>`).join("")}</select></label><div></div></div><div class="form-grid">${field("Height (cm)", "height_cm", "number", profile.height_cm ?? "")}${field("Weight (kg)", "weight_kg", "number", profile.weight_kg ?? "")}</div>${field("Location", "location", "text", profile.location ?? "")}<button class="button button-primary" type="submit">Save profile ${icons.arrow}</button></form>
-      </article>
-      <aside class="profile-aside"><div class="profile-aside-mark">${icons.user}</div><span class="eyebrow">DATABASE</span><h2>MongoDB Connected</h2><p>Your records are stored in the configured MongoDB database. The app administrator can view account data.</p><div class="privacy-chip"><span></span>MongoDB Storage</div></aside>
-    </section>
-  `);
-  document.querySelector("#profile-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
-    const payload = {
-      name: values.name.trim(),
-      age: values.age ? Number(values.age) : null,
-      gender: values.gender,
-      blood_type: values.blood_type,
-      height_cm: values.height_cm ? Number(values.height_cm) : null,
-      weight_kg: values.weight_kg ? Number(values.weight_kg) : null,
-      location: values.location,
-      conditions: currentProfile?.conditions || [],
-      medications: currentProfile?.medications || [],
-      appetite: currentProfile?.appetite || "",
-      daily_routine: currentProfile?.daily_routine || "",
-      family_history: currentProfile?.family_history || "",
-      prescriptions: currentProfile?.prescriptions || [],
-      profile_image: currentProfile?.profile_image || "",
-    };
-    try {
-      currentProfile = await request("/profile", { method: "PUT", body: JSON.stringify(payload) });
-      currentUser.name = values.name.trim();
-      showToast("Profile saved.");
-      await renderProfile();
-    } catch (error) { showToast(error.message, true); }
-  });
-}
-
-async function render() {
-  if (!token) return authView();
+  let token = null;
   try {
-    if (!currentUser) {
-      const session = await request("/me");
-      currentUser = session.user;
-      currentProfile = session.profile;
+    token = localStorage.getItem("beluga-token") || null;
+  } catch (_) {
+    // The sign-in screen can still render when storage is unavailable (for example, file previews).
+  }
+  let currentUser = null;
+  let currentProfile = null;
+  let activePage = "overview";
+  let activePatientId = null;
+  let activeChart = null;
+
+  // ==========================================
+  // ICONS (Clean, stroke-based SVG icons)
+  // ==========================================
+  const icons = {
+    pulse: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>`,
+    home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/></svg>`,
+    patients: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+    chart: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h17M8 15l4-4 3 2 5-6"/></svg>`,
+    bell: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12h4"/></svg>`,
+    user: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`,
+    plus: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`,
+    check: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>`,
+    exit: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m9-9h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></svg>`,
+    arrow: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>`,
+    search: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
+    edit: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+    trash: `<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+    calendar: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+    alert: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    sparkle: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.912 5.885L20 10.8l-4.5 4.385L16.568 21 12 17.585 7.432 21l1.068-5.815L4 10.8l6.088-1.915L12 3z"/></svg>`,
+    shield: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  };
+
+  function setupCustomCursor() {
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const cursor = document.createElement("span");
+    cursor.className = "custom-cursor is-hidden";
+    cursor.setAttribute("aria-hidden", "true");
+    document.body.append(cursor);
+
+    let pointerX = 0;
+    let pointerY = 0;
+    let frameId = 0;
+    document.addEventListener("pointermove", (event) => {
+      if (event.pointerType !== "mouse") return;
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+      const target = event.target instanceof Element ? event.target : null;
+      cursor.classList.toggle("is-hidden", Boolean(target?.closest("input, textarea, select, [contenteditable='true']")));
+      cursor.classList.toggle("is-interactive", Boolean(target?.closest("a, button, [role='button']")));
+
+      if (!frameId) {
+        frameId = requestAnimationFrame(() => {
+          cursor.style.transform = `translate3d(${pointerX}px, ${pointerY}px, 0) translate(-50%, -50%)`;
+          frameId = 0;
+        });
+      }
+    }, { passive: true });
+    document.addEventListener("pointerdown", () => cursor.classList.add("is-pressed"), { passive: true });
+    document.addEventListener("pointerup", () => cursor.classList.remove("is-pressed"), { passive: true });
+    document.addEventListener("pointerleave", () => cursor.classList.add("is-hidden"));
+  }
+
+  setupCustomCursor();
+
+  // ==========================================
+  // UTILITIES
+  // ==========================================
+  const escapeHtml = (val = "") =>
+    String(val ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[ch]));
+
+  function showToast(message, type = "success") {
+    if (!toastContainer) return;
+    const isError = type === true || type === "error";
+    const toast = document.createElement("div");
+    toast.className = `toast ${isError ? "toast-error" : "toast-success"}`;
+    toast.innerHTML = `
+      ${isError ? icons.alert : icons.check}
+      <span>${escapeHtml(message)}</span>
+    `;
+    toastContainer.appendChild(toast);
+
+    setTimeout(() => {
+      toast.classList.add("toast-hide");
+      setTimeout(() => toast.remove(), 250);
+    }, 3500);
+  }
+
+  async function request(path, options = {}) {
+    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${API}${path}`, { ...options, headers });
+    if (res.status === 204) return null;
+
+    const contentType = (res.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.includes("application/json")) {
+      throw new Error("Beluga's API did not return data. Start the FastAPI server or set the API address in web/index.html.");
     }
-    if (activePage === "patients") await renderPatients();
-    else if (activePage === "patient-detail" && activePatientId) await renderPatientDetail(activePatientId);
-    else if (activePage === "overview") await renderOverview();
-    else if (activePage === "measurements") await renderMeasurements();
-    else if (activePage === "reminders") await renderReminders();
-    else await renderProfile();
-  } catch (error) {
-    if (error.message.toLowerCase().includes("fetch")) {
-      app.innerHTML = `<section class="offline-state"><div class="offline-mark">${icons.pulse}</div><span class="eyebrow">SERVER UNAVAILABLE</span><h1>Let's reconnect.</h1><p>The Python server may be stopped. Run <code>python scripts/start_server.py</code> to restart it.</p><button class="button button-primary" id="retry">Try again</button><button class="text-button" id="offline-signout">Sign out</button></section>`;
-      document.querySelector("#retry").addEventListener("click", render);
-      document.querySelector("#offline-signout").addEventListener("click", () => signOut());
-    } else showToast(error.message, true);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 401 && token) {
+        signOut(false);
+      }
+      throw new Error(data.detail || "Request failed. Please check input and try again.");
+    }
+    return data;
   }
-}
 
-function signOut(notify = true) {
-  const currentToken = token;
-  token = null;
-  currentUser = null;
-  currentProfile = null;
-  localStorage.removeItem("beluga-token");
-  activePage = "patients";
-  activePatientId = null;
-  if (currentToken) {
-    fetch(`${API}/logout`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentToken}` },
-    }).catch(() => {});
+  function destroyCurrentChart() {
+    if (activeChart) {
+      try {
+        activeChart.destroy();
+      } catch (_) {}
+      activeChart = null;
+    }
   }
-  authView();
-  if (notify) showToast("You have signed out.");
-}
 
-document.addEventListener("click", (event) => {
-  const pageButton = event.target.closest("[data-page]");
-  if (pageButton && !pageButton.closest(".app-shell")) navigate(pageButton.dataset.page);
-});
+  function setSession(authResponse) {
+    token = authResponse.access_token;
+    currentUser = authResponse.user;
+    currentProfile = authResponse.profile;
+    try {
+      localStorage.setItem("beluga-token", token);
+    } catch (_) {}
+    activePage = "overview";
+    render();
+  }
 
-render();
+  function signOut(notify = true) {
+    const oldToken = token;
+    token = null;
+    currentUser = null;
+    currentProfile = null;
+    try {
+      localStorage.removeItem("beluga-token");
+    } catch (_) {}
+    destroyCurrentChart();
+    activePage = "overview";
+    activePatientId = null;
+
+    if (oldToken) {
+      fetch(`${API}/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${oldToken}` },
+      }).catch(() => {});
+    }
+
+    renderAuth();
+    if (notify) showToast("You have been signed out.", "info");
+  }
+
+  function renderField(label, name, type = "text", value = "", extra = "") {
+    return `
+      <div class="field">
+        <label class="field-label" for="fld-${name}">${label}</label>
+        <input id="fld-${name}" name="${name}" type="${type}" value="${escapeHtml(value ?? "")}" ${extra}>
+      </div>
+    `;
+  }
+
+  // ==========================================
+  // AUTH VIEW (LOGIN & REGISTER)
+  // ==========================================
+  function renderAuth(mode = "login") {
+    destroyCurrentChart();
+    const isRegister = mode === "register";
+
+    appNode.innerHTML = `
+      <div class="auth-page">
+      <section class="auth-layout">
+        <section class="auth-art" aria-labelledby="auth-hero-title">
+          <div class="auth-art-bg"></div>
+          <div class="auth-art-grid"></div>
+
+          <div class="auth-brand">
+            <div class="auth-brand-icon">${icons.pulse}</div>
+            <span>beluga<span class="auth-brand-sub"> health</span></span>
+          </div>
+
+          <div class="auth-art-main">
+            <div class="auth-art-copy">
+              <span class="eyebrow">${icons.sparkle} YOUR HEALTH WORKSPACE</span>
+              <h1 id="auth-hero-title">Care feels clearer <span>when it’s together.</span></h1>
+              <p>One calm place for personal check-ins, daily reminders, and patient visit notes.</p>
+            </div>
+            <figure class="auth-photo-frame">
+              <img class="auth-hero-photo" src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=640&amp;q=75" srcset="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=420&amp;q=70 420w, https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=760&amp;q=75 760w" sizes="(max-width: 560px) 112px, (max-width: 860px) 180px, 32vw" alt="Healthcare professional reviewing information on a phone" width="640" height="800" fetchpriority="high" decoding="async">
+              <figcaption class="auth-photo-caption"><span class="auth-photo-status"></span>Care details, all in one place</figcaption>
+            </figure>
+          </div>
+
+          <div class="auth-art-bottom">
+            <div class="auth-stats">
+              <div class="auth-stat">
+                <strong>Health</strong>
+                <span>Personal check-ins</span>
+              </div>
+              <div class="auth-stat">
+                <strong>Reminders</strong>
+                <span>Keep daily routines close</span>
+              </div>
+              <div class="auth-stat">
+                <strong>Records</strong>
+                <span>Patient notes & visits</span>
+              </div>
+            </div>
+            <div class="auth-art-footer">
+              A STUDENT PROJECT PROTOTYPE · USE SYNTHETIC DATA ONLY
+            </div>
+          </div>
+        </section>
+
+        <div class="auth-panel">
+          <div class="auth-form-wrap">
+            <span class="eyebrow">${isRegister ? "GET STARTED" : "YOUR BELUGA ACCOUNT"}</span>
+            <h2>${isRegister ? "Create your account" : "Welcome back"}</h2>
+            <p class="auth-sub">${isRegister ? "Set up your space for health check-ins, reminders, and patient notes." : "Sign in to see your health entries, reminders, and patient records."}</p>
+
+            <form id="auth-form" class="form-stack" novalidate>
+              ${isRegister ? renderField("Full Name", "name", "text", "", "autocomplete='name' required placeholder='Your name'") : ""}
+              ${renderField("Email Address", "email", "email", "", "autocomplete='email' required placeholder='you@example.com'")}
+              ${renderField("Password", "password", "password", "", `autocomplete='${isRegister ? "new-password" : "current-password"}' minlength='8' required placeholder='••••••••'`)}
+              ${isRegister ? '<p class="auth-password-hint">Use at least 8 characters for your password.</p>' : ""}
+              
+              <button class="btn btn-primary btn-wide" type="submit" id="btn-auth-submit" style="margin-top:6px;">
+                <span>${isRegister ? "Create Account" : "Sign In to Workspace"}</span>
+                ${icons.arrow}
+              </button>
+            </form>
+
+            <div class="auth-switch-row">
+              ${isRegister ? "Already registered?" : "Don't have an account yet?"}
+              <button class="text-btn" id="auth-switch-btn" type="button">
+                ${isRegister ? "Sign in instead" : "Create new account"}
+              </button>
+            </div>
+
+            <div class="auth-foot-note">
+              ${icons.shield} Beluga is a student project prototype. Use synthetic data only; this app does not diagnose conditions or recommend treatment.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="auth-info" aria-labelledby="auth-info-heading">
+        <div class="auth-info-inner">
+          <header class="auth-info-heading">
+            <span class="eyebrow">A LITTLE MORE ROOM TO BREATHE</span>
+            <h2 id="auth-info-heading">Everyday health, in one clear view.</h2>
+            <p>Bring check-ins, useful reminders, and visit context together without making your routine feel complicated.</p>
+          </header>
+
+          <div class="auth-info-grid">
+            <article class="auth-info-feature">
+              <img src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=720&amp;q=75" alt="Clinician using a phone to review health information" width="720" height="480" loading="lazy" decoding="async">
+              <div class="auth-info-copy">
+                <span class="auth-info-kicker">01 / CHECK IN</span>
+                <h3>Notice your patterns</h3>
+                <p>Keep everyday health entries together so you can look back at what you have recorded.</p>
+              </div>
+            </article>
+            <article class="auth-info-feature">
+              <img src="https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&amp;fit=crop&amp;w=720&amp;q=75" alt="Person taking a quiet moment for a daily wellness routine" width="640" height="744" loading="lazy" decoding="async">
+              <div class="auth-info-copy">
+                <span class="auth-info-kicker">02 / REMIND</span>
+                <h3>Make space for routines</h3>
+                <p>Set simple reminders for the habits and tasks you want to keep close through the day.</p>
+              </div>
+            </article>
+            <article class="auth-info-feature">
+              <img src="https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?auto=format&amp;fit=crop&amp;w=720&amp;q=75" alt="Healthcare professional with a stethoscope" width="720" height="480" loading="lazy" decoding="async">
+              <div class="auth-info-copy">
+                <span class="auth-info-kicker">03 / ORGANIZE</span>
+                <h3>Keep visit details together</h3>
+                <p>Organize patient notes and visit information in one place for this project workspace.</p>
+              </div>
+            </article>
+          </div>
+
+          <aside class="auth-info-safety">
+            ${icons.shield}
+            <p><strong>Student project prototype.</strong> Use synthetic data only. Beluga does not diagnose conditions or recommend treatment.</p>
+          </aside>
+        </div>
+      </section>
+
+      <footer class="auth-site-footer">
+        <span>© ${new Date().getFullYear()} Beluga Health</span>
+        <span>Built as a student project · Use synthetic data only</span>
+      </footer>
+      </div>
+    `;
+
+    document.querySelector("#auth-switch-btn").addEventListener("click", () => {
+      renderAuth(isRegister ? "login" : "register");
+    });
+
+    const form = document.querySelector("#auth-form");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+
+      if (!payload.email || !payload.email.includes("@")) {
+        return showToast("Please provide a valid email address.", "error");
+      }
+      if (!payload.password || payload.password.length < 8) {
+        return showToast("Password must be at least 8 characters long.", "error");
+      }
+      if (isRegister && !payload.name?.trim()) {
+        return showToast("Please enter your name.", "error");
+      }
+
+      const submitBtn = document.querySelector("#btn-auth-submit");
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<span class="loader" style="width:18px;height:18px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></span> Authenticating...`;
+
+      try {
+        const endpoint = isRegister ? "/register" : "/login";
+        const result = await request(endpoint, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        showToast(isRegister ? "Account created successfully!" : "Signed in successfully!");
+        setSession(result);
+      } catch (err) {
+        showToast(err.message, "error");
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<span>${isRegister ? "Create Account" : "Sign In to Workspace"}</span> ${icons.arrow}`;
+      }
+    });
+  }
+
+  // ==========================================
+  // APPLICATION SHELL (SIDEBAR + TOPBAR + CONTENT)
+  // ==========================================
+  function renderShell(contentHtml) {
+    const userName = currentUser?.name?.trim() || "Beluga member";
+    const initials = userName
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "BH";
+
+    const navItems = [
+      { id: "overview", label: "Overview", icon: icons.home },
+      { id: "measurements", label: "Health check-ins", icon: icons.chart },
+      { id: "reminders", label: "Reminders", icon: icons.bell },
+      { id: "patients", label: "Patient records", icon: icons.patients },
+      { id: "profile", label: "My profile", icon: icons.user },
+    ];
+
+    appNode.innerHTML = `
+      <div class="app-shell">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+          <a class="sidebar-brand" href="#" data-page="overview">
+            <div class="sidebar-brand-icon">${icons.pulse}</div>
+            <span>beluga<span class="sidebar-brand-sub"> health</span></span>
+          </a>
+
+          <div class="nav-section-label">Health workspace</div>
+          <nav class="sidebar-nav">
+            ${navItems
+              .map(
+                (item) => `
+                <button class="nav-item ${activePage === item.id ? "is-active" : ""}" data-page="${item.id}" type="button">
+                  ${item.icon}
+                  <span>${item.label}</span>
+                </button>
+              `
+              )
+              .join("")}
+          </nav>
+
+          <div class="sidebar-bottom">
+            <div class="status-dot">Workspace connected</div>
+            <div class="user-chip">
+              <div class="user-avatar">${escapeHtml(initials)}</div>
+              <div class="user-chip-info">
+                <div class="user-chip-name">${escapeHtml(userName)}</div>
+                <div class="user-chip-role">${escapeHtml(currentUser?.email || "Local Server")}</div>
+              </div>
+            </div>
+            <button class="sign-out-btn" id="btn-sign-out" type="button">
+              ${icons.exit}
+              <span>Sign out</span>
+            </button>
+          </div>
+        </aside>
+
+        <!-- Workspace & Topbar -->
+        <div class="workspace">
+          <header class="topbar">
+            <div class="topbar-left">
+              <span class="topbar-date">${new Intl.DateTimeFormat(undefined, {
+                weekday: "long",
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              }).format(new Date())}</span>
+              <div class="topbar-badge">Signed in</div>
+            </div>
+            <div class="topbar-right">
+              <button class="topbar-avatar" data-page="profile" title="View Profile" type="button">
+                ${escapeHtml(initials)}
+              </button>
+            </div>
+          </header>
+
+          <main class="page-content">
+            ${contentHtml}
+          </main>
+        </div>
+
+        <!-- Mobile Navigation Bottom Bar -->
+        <nav class="mobile-nav" aria-label="Mobile Navigation">
+          ${navItems
+            .map(
+              (item) => `
+              <button class="mob-nav-item ${activePage === item.id ? "is-active" : ""}" data-page="${item.id}" type="button">
+                ${item.icon}
+                <span>${item.label.split(" ")[0]}</span>
+              </button>
+            `
+            )
+            .join("")}
+        </nav>
+      </div>
+    `;
+
+    // Bind navigation buttons
+    document.querySelectorAll("[data-page]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const page = btn.dataset.page;
+        if (page) navigate(page);
+      });
+    });
+
+    document.querySelector("#btn-sign-out").addEventListener("click", () => signOut());
+  }
+
+  async function navigate(page, patientId = null) {
+    destroyCurrentChart();
+    activePage = page;
+    activePatientId = patientId;
+    await render();
+  }
+
+  // ==========================================
+  // PATIENTS DIRECTORY (PRIMARY CLINICAL VIEW)
+  // ==========================================
+  async function renderPatients(searchQuery = "") {
+    let patients = [];
+    try {
+      const url = searchQuery ? `/patients?q=${encodeURIComponent(searchQuery)}` : "/patients";
+      patients = await request(url);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+
+    const contentHtml = `
+      <section class="page-heading">
+        <div>
+          <span class="eyebrow">${icons.shield} PATIENT RECORDS</span>
+          <h1>Patient records</h1>
+          <p>Keep patient details, visit notes, and follow-up dates organized in one place.</p>
+        </div>
+        <div class="page-heading-actions">
+          <button class="btn btn-primary" id="btn-add-patient" type="button">
+            ${icons.plus}
+            <span>Register New Patient</span>
+          </button>
+        </div>
+      </section>
+
+      <div class="patients-toolbar">
+        <div class="search-box">
+          ${icons.search}
+          <input type="text" id="patient-search-input" placeholder="Search by name, ID, phone, condition..." value="${escapeHtml(searchQuery)}">
+        </div>
+        <div class="mono" style="font-size:12px;color:var(--text-muted);">
+          Patient records: <strong style="color:var(--cyan);">${patients.length}</strong>
+        </div>
+      </div>
+
+      ${
+        patients.length
+          ? `
+        <div class="patients-grid">
+          ${patients
+            .map((p) => {
+              const pInitials = (p.name || "P")
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((n) => n[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase();
+              return `
+                <article class="patient-card" data-patient-id="${escapeHtml(p.patient_id)}" tabindex="0" role="button">
+                  <div class="patient-card-head">
+                    <div class="patient-avatar">${escapeHtml(pInitials)}</div>
+                    <div class="patient-card-info">
+                      <h3 class="patient-name">${escapeHtml(p.name)}</h3>
+                      <div class="patient-pid">${escapeHtml(p.patient_id)}</div>
+                    </div>
+                    <span class="tag tag-cyan">${escapeHtml(p.blood_group || "Blood N/A")}</span>
+                  </div>
+
+                  <div class="patient-meta">
+                    <strong>${p.age} yrs</strong> · ${escapeHtml(p.gender || "Unspecified")}
+                    ${p.phone ? ` · <span>📞 ${escapeHtml(p.phone)}</span>` : ""}
+                  </div>
+
+                  <div class="patient-tags">
+                    ${(p.chronic_conditions || [])
+                      .slice(0, 3)
+                      .map((c) => `<span class="tag tag-amber">${escapeHtml(c)}</span>`)
+                      .join("")}
+                    ${(p.allergies || [])
+                      .slice(0, 2)
+                      .map((a) => `<span class="tag tag-rose">Allergy: ${escapeHtml(a)}</span>`)
+                      .join("")}
+                    ${!p.chronic_conditions?.length && !p.allergies?.length ? `<span class="tag">No conditions or allergies added</span>` : ""}
+                  </div>
+
+                  <div class="patient-card-foot">
+                    <span>${p.visit_count} recorded visit(s)</span>
+                    <span class="patient-card-foot-action">
+                      Open Record ${icons.arrow}
+                    </span>
+                  </div>
+                </article>
+              `;
+            })
+            .join("")}
+        </div>
+      `
+          : `
+        <div class="empty-state">
+          <div class="empty-icon">${icons.patients}</div>
+          <h3>${searchQuery ? "No matching patients" : "No patient records registered"}</h3>
+          <p>${searchQuery ? `No results found for "${escapeHtml(searchQuery)}". Try searching another term.` : "Start tracking clinical records by adding your first patient."}</p>
+          <button class="btn btn-primary" id="btn-empty-add-patient" type="button">
+            ${icons.plus}
+            <span>Add Patient Record</span>
+          </button>
+        </div>
+      `
+      }
+    `;
+
+    renderShell(contentHtml);
+
+    // Search input with debounce
+    const searchInput = document.querySelector("#patient-search-input");
+    if (searchInput) {
+      let debounceTimer;
+      searchInput.addEventListener("input", (e) => {
+        clearTimeout(debounceTimer);
+        const val = e.target.value;
+        debounceTimer = setTimeout(async () => {
+          await renderPatients(val.trim());
+          const newSearch = document.querySelector("#patient-search-input");
+          if (newSearch) {
+            newSearch.focus();
+            newSearch.setSelectionRange(newSearch.value.length, newSearch.value.length);
+          }
+        }, 280);
+      });
+    }
+
+    // Patient card click
+    document.querySelectorAll("[data-patient-id]").forEach((card) => {
+      const openDetail = () => navigate("patient-detail", card.dataset.patientId);
+      card.addEventListener("click", openDetail);
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openDetail();
+        }
+      });
+    });
+
+    document.querySelector("#btn-add-patient")?.addEventListener("click", () => openPatientModal());
+    document.querySelector("#btn-empty-add-patient")?.addEventListener("click", () => openPatientModal());
+  }
+
+  // ==========================================
+  // PATIENT DETAIL & MEDICAL VISITS TIMELINE
+  // ==========================================
+  async function renderPatientDetail(patientId) {
+    let patient = null;
+    try {
+      patient = await request(`/patients/${patientId}`);
+    } catch (err) {
+      showToast(err.message, "error");
+      return navigate("patients");
+    }
+
+    const visits = patient.visits || [];
+    const pInitials = (patient.name || "P")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+
+    const contentHtml = `
+      <section class="page-heading">
+        <div>
+          <button class="inline-back" id="btn-back-patients" type="button">
+            ← Back to Patient Directory
+          </button>
+          <h1>${escapeHtml(patient.name)}</h1>
+          <p>Saved details and visit notes for this patient.</p>
+        </div>
+        <div class="page-heading-actions">
+          <button class="btn btn-secondary" id="btn-edit-patient" type="button">
+            ${icons.edit}
+            <span>Modify Patient</span>
+          </button>
+          <button class="btn btn-primary" id="btn-add-visit" type="button">
+            ${icons.plus}
+            <span>Add Medical Record</span>
+          </button>
+        </div>
+      </section>
+
+      <div class="detail-layout">
+        <!-- Patient Overview Sidebar Card -->
+        <aside class="patient-profile-card">
+          <div class="patient-profile-hero">
+            <div class="patient-profile-avatar">${escapeHtml(pInitials)}</div>
+            <div class="patient-profile-name">${escapeHtml(patient.name)}</div>
+            <div class="patient-profile-pid">${escapeHtml(patient.patient_id)}</div>
+          </div>
+
+          <div class="profile-meta-list">
+            <div class="profile-meta-row">
+              <span>Age / Gender</span>
+              <strong>${patient.age} yrs · ${escapeHtml(patient.gender || "Unspecified")}</strong>
+            </div>
+            <div class="profile-meta-row">
+              <span>Blood Group</span>
+              <strong style="color:var(--cyan);">${escapeHtml(patient.blood_group || "Not provided")}</strong>
+            </div>
+            <div class="profile-meta-row">
+              <span>Contact Phone</span>
+              <strong>${escapeHtml(patient.phone || "—")}</strong>
+            </div>
+            <div class="profile-meta-row">
+              <span>Email Address</span>
+              <strong>${escapeHtml(patient.email || "—")}</strong>
+            </div>
+            <div class="profile-meta-row">
+              <span>Emergency Contact</span>
+              <strong>${escapeHtml(patient.emergency_contact || "—")}</strong>
+            </div>
+            <div class="profile-meta-row">
+              <span>Address</span>
+              <strong>${escapeHtml(patient.address || "—")}</strong>
+            </div>
+          </div>
+
+          <!-- Chronic Conditions -->
+          <div class="profile-section">
+            <div class="profile-section-title">Chronic Conditions</div>
+            <div class="patient-tags">
+              ${
+                (patient.chronic_conditions || []).length
+                  ? patient.chronic_conditions.map((c) => `<span class="tag tag-amber">${escapeHtml(c)}</span>`).join("")
+                  : `<span class="tag">None recorded</span>`
+              }
+            </div>
+          </div>
+
+          <!-- Allergies -->
+          <div class="profile-section">
+            <div class="profile-section-title">Allergies & Sensitivities</div>
+            <div class="patient-tags">
+              ${
+                (patient.allergies || []).length
+                  ? patient.allergies.map((a) => `<span class="tag tag-rose">⚠️ ${escapeHtml(a)}</span>`).join("")
+                  : `<span class="tag">No known allergies</span>`
+              }
+            </div>
+          </div>
+
+          <!-- Current Medications -->
+          <div class="profile-section">
+            <div class="profile-section-title">Active Medications</div>
+            <div class="patient-tags">
+              ${
+                (patient.current_medications || []).length
+                  ? patient.current_medications.map((m) => `<span class="tag tag-violet">💊 ${escapeHtml(m)}</span>`).join("")
+                  : `<span class="tag">None</span>`
+              }
+            </div>
+          </div>
+
+          ${
+            patient.notes
+              ? `
+            <div class="profile-section">
+              <div class="profile-section-title">Clinician Remarks</div>
+              <p style="font-size:12px;color:var(--text-subtle);line-height:1.6;margin:0;">
+                ${escapeHtml(patient.notes)}
+              </p>
+            </div>
+          `
+              : ""
+          }
+
+          <div class="danger-zone">
+            <button class="btn btn-danger btn-sm btn-wide" id="btn-delete-patient" type="button">
+              ${icons.trash}
+              <span>Delete Patient Record</span>
+            </button>
+          </div>
+        </aside>
+
+        <!-- Medical Checkup Visits Timeline -->
+        <section class="visits-section">
+          <div class="visits-header">
+            <h3>Medical Checkup Records (${visits.length})</h3>
+            <span class="mono" style="font-size:11px;color:var(--text-muted);">Encrypted Mongo Vault</span>
+          </div>
+
+          ${
+            visits.length
+              ? `
+            <div class="visit-list">
+              ${visits
+                .map((v) => `
+                <article class="visit-card">
+                  <div class="visit-card-top">
+                    <div class="visit-date">
+                      ${icons.calendar}
+                      <span>Date: ${escapeHtml(v.visit_date)}</span>
+                    </div>
+                    ${
+                      v.next_followup
+                        ? `<span class="tag tag-cyan">Next Follow-up: ${escapeHtml(v.next_followup)}</span>`
+                        : ""
+                    }
+                  </div>
+
+                  ${v.chief_complaint ? `<h4 class="visit-complaint">${escapeHtml(v.chief_complaint)}</h4>` : ""}
+                  ${v.diagnosis ? `<div class="visit-diagnosis">Diagnosis: ${escapeHtml(v.diagnosis)}</div>` : ""}
+
+                  <div class="vitals-grid">
+                    ${
+                      v.systolic_bp && v.diastolic_bp
+                        ? `<div class="vital-chip"><small>Blood Pressure</small><strong>${v.systolic_bp}/${v.diastolic_bp} mmHg</strong></div>`
+                        : ""
+                    }
+                    ${
+                      v.fasting_glucose
+                        ? `<div class="vital-chip"><small>Fasting Glucose</small><strong>${v.fasting_glucose} mg/dL</strong></div>`
+                        : ""
+                    }
+                    ${
+                      v.heart_rate
+                        ? `<div class="vital-chip"><small>Heart Rate</small><strong>${v.heart_rate} bpm</strong></div>`
+                        : ""
+                    }
+                    ${
+                      v.temperature
+                        ? `<div class="vital-chip"><small>Body Temp</small><strong>${v.temperature} °C</strong></div>`
+                        : ""
+                    }
+                    ${
+                      v.weight_kg
+                        ? `<div class="vital-chip"><small>Weight</small><strong>${v.weight_kg} kg</strong></div>`
+                        : ""
+                    }
+                  </div>
+
+                  ${
+                    (v.prescriptions || []).length
+                      ? `
+                    <div style="margin-top:10px;">
+                      <span class="eyebrow">PRESCRIBED REGIMEN:</span>
+                      <div class="rx-list">
+                        ${v.prescriptions.map((rx) => `<span class="rx-item">💊 ${escapeHtml(rx)}</span>`).join("")}
+                      </div>
+                    </div>
+                  `
+                      : ""
+                  }
+
+                  ${
+                    v.clinical_notes
+                      ? `
+                    <div class="clinical-notes">
+                      "${escapeHtml(v.clinical_notes)}"
+                    </div>
+                  `
+                      : ""
+                  }
+                </article>
+              `)
+                .join("")}
+            </div>
+          `
+              : `
+            <div class="empty-state">
+              <div class="empty-icon">${icons.chart}</div>
+              <h3>No medical records yet</h3>
+              <p>Record symptoms, blood pressure, fasting glucose, and prescriptions for this patient.</p>
+              <button class="btn btn-primary" id="btn-empty-add-visit" type="button">
+                ${icons.plus}
+                <span>Add First Checkup</span>
+              </button>
+            </div>
+          `
+          }
+        </section>
+      </div>
+    `;
+
+    renderShell(contentHtml);
+
+    document.querySelector("#btn-back-patients")?.addEventListener("click", () => navigate("patients"));
+    document.querySelector("#btn-edit-patient")?.addEventListener("click", () => openPatientModal(patient));
+    document.querySelector("#btn-add-visit")?.addEventListener("click", () => openVisitModal(patient.patient_id));
+    document.querySelector("#btn-empty-add-visit")?.addEventListener("click", () => openVisitModal(patient.patient_id));
+
+    document.querySelector("#btn-delete-patient")?.addEventListener("click", async () => {
+      const confirmed = window.confirm(
+        `Are you sure you want to permanently delete patient "${patient.name}" and all historical visit records?`
+      );
+      if (!confirmed) return;
+
+      try {
+        await request(`/patients/${patient.patient_id}`, { method: "DELETE" });
+        showToast("Patient record successfully removed.");
+        navigate("patients");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  }
+
+  // ==========================================
+  // PATIENT MODAL (CREATE / EDIT)
+  // ==========================================
+  function openPatientModal(existing = null) {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+          <h3>${existing ? "Modify Patient Data" : "Register New Patient"}</h3>
+          <button class="modal-close" id="modal-close-btn" type="button">&times;</button>
+        </div>
+        <form id="modal-patient-form">
+          <div class="modal-body form-stack">
+            <div class="form-grid">
+              ${renderField("Full Patient Name *", "name", "text", existing?.name || "", "required placeholder='John Doe'")}
+              ${renderField("Patient ID (auto-generated if empty)", "patient_id", "text", existing?.patient_id || "", "placeholder='PAT-2024-001'")}
+            </div>
+
+            <div class="form-grid-3">
+              ${renderField("Age *", "age", "number", existing?.age ?? "", "min='0' max='150' required placeholder='45'")}
+              <div class="field">
+                <label class="field-label" for="fld-gender">Gender</label>
+                <select id="fld-gender" name="gender">
+                  <option value="Female" ${existing?.gender === "Female" ? "selected" : ""}>Female</option>
+                  <option value="Male" ${existing?.gender === "Male" ? "selected" : ""}>Male</option>
+                  <option value="Other" ${existing?.gender === "Other" ? "selected" : ""}>Other</option>
+                  <option value="Unspecified" ${!existing || existing?.gender === "Unspecified" ? "selected" : ""}>Unspecified</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label" for="fld-blood_group">Blood Group</label>
+                <select id="fld-blood_group" name="blood_group">
+                  <option value="">Not Known</option>
+                  ${["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
+                    .map((bg) => `<option value="${bg}" ${existing?.blood_group === bg ? "selected" : ""}>${bg}</option>`)
+                    .join("")}
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              ${renderField("Phone Number", "phone", "tel", existing?.phone || "", "placeholder='+1 (555) 000-0000'")}
+              ${renderField("Email Address", "email", "email", existing?.email || "", "placeholder='patient@example.com'")}
+            </div>
+
+            <div class="form-grid">
+              ${renderField("Emergency Contact", "emergency_contact", "text", existing?.emergency_contact || "", "placeholder='Name & Phone number'")}
+              ${renderField("Residential Address", "address", "text", existing?.address || "", "placeholder='City, State'")}
+            </div>
+
+            ${renderField(
+              "Chronic Conditions (comma separated)",
+              "chronic_conditions",
+              "text",
+              (existing?.chronic_conditions || []).join(", "),
+              "placeholder='Hypertension, Type 2 Diabetes, Asthma'"
+            )}
+
+            ${renderField(
+              "Allergies (comma separated)",
+              "allergies",
+              "text",
+              (existing?.allergies || []).join(", "),
+              "placeholder='Penicillin, Sulfa drugs, Peanuts'"
+            )}
+
+            ${renderField(
+              "Current Medications (comma separated)",
+              "current_medications",
+              "text",
+              (existing?.current_medications || []).join(", "),
+              "placeholder='Metformin 500mg, Lisinopril 10mg'"
+            )}
+
+            <div class="field">
+              <label class="field-label" for="fld-notes">General Clinical Notes</label>
+              <textarea id="fld-notes" name="notes" placeholder="Family history, lifestyle notes, risk factors">${escapeHtml(existing?.notes || "")}</textarea>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-ghost" type="button" id="modal-cancel-btn">Cancel</button>
+            <button class="btn btn-primary" type="submit" id="modal-submit-btn">
+              ${existing ? "Save Modifications" : "Register Patient"}
+            </button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    document.body.appendChild(backdrop);
+
+    const closeModal = () => {
+      backdrop.remove();
+      document.removeEventListener("keydown", onKeyDown);
+    };
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") closeModal();
+    };
+    document.addEventListener("keydown", onKeyDown);
+
+    backdrop.querySelector("#modal-close-btn").addEventListener("click", closeModal);
+    backdrop.querySelector("#modal-cancel-btn").addEventListener("click", closeModal);
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) closeModal();
+    });
+
+    const form = backdrop.querySelector("#modal-patient-form");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const raw = Object.fromEntries(new FormData(form).entries());
+
+      if (!raw.name?.trim()) return showToast("Patient name is required.", "error");
+      if (!raw.age || Number(raw.age) < 0) return showToast("A valid age is required.", "error");
+
+      const payload = {
+        patient_id: raw.patient_id?.trim() || null,
+        name: raw.name.trim(),
+        age: Number(raw.age),
+        gender: raw.gender,
+        blood_group: raw.blood_group || null,
+        phone: raw.phone?.trim() || "",
+        email: raw.email?.trim() || "",
+        address: raw.address?.trim() || "",
+        emergency_contact: raw.emergency_contact?.trim() || "",
+        chronic_conditions: (raw.chronic_conditions || "").split(",").map((s) => s.trim()).filter(Boolean),
+        allergies: (raw.allergies || "").split(",").map((s) => s.trim()).filter(Boolean),
+        current_medications: (raw.current_medications || "").split(",").map((s) => s.trim()).filter(Boolean),
+        notes: raw.notes?.trim() || "",
+      };
+
+      const submitBtn = backdrop.querySelector("#modal-submit-btn");
+      submitBtn.disabled = true;
+
+      try {
+        if (existing) {
+          await request(`/patients/${existing.patient_id}`, {
+            method: "PUT",
+            body: JSON.stringify(payload),
+          });
+          showToast("Patient updated successfully.");
+          closeModal();
+          renderPatientDetail(payload.patient_id || existing.patient_id);
+        } else {
+          const created = await request("/patients", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          showToast("Patient registered successfully.");
+          closeModal();
+          renderPatientDetail(created.patient_id);
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  // ==========================================
+  // VISIT MODAL (ADD MEDICAL CHECKUP)
+  // ==========================================
+  function openVisitModal(patientId) {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    const todayIso = new Date().toISOString().substring(0, 10);
+
+    backdrop.innerHTML = `
+      <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+          <h3>Add Medical Checkup / Record</h3>
+          <button class="modal-close" id="modal-close-btn" type="button">&times;</button>
+        </div>
+        <form id="modal-visit-form">
+          <div class="modal-body form-stack">
+            <div class="form-grid">
+              ${renderField("Visit Date *", "visit_date", "date", todayIso, "required")}
+              ${renderField("Next Follow-up Date", "next_followup", "date", "")}
+            </div>
+
+            ${renderField("Chief Complaint / Symptoms *", "chief_complaint", "text", "", "required placeholder='e.g. Severe migraine, elevated BP, fatigue'")}
+            ${renderField("Diagnosis / Clinical Assessment", "diagnosis", "text", "", "placeholder='e.g. Essential Hypertension, Acute Sinusitis'")}
+
+            <div class="form-grid">
+              ${renderField("Systolic BP (mmHg)", "systolic_bp", "number", "", "min='30' max='300' placeholder='120'")}
+              ${renderField("Diastolic BP (mmHg)", "diastolic_bp", "number", "", "min='20' max='200' placeholder='80'")}
+            </div>
+
+            <div class="form-grid">
+              ${renderField("Fasting Glucose (mg/dL)", "fasting_glucose", "number", "", "min='10' max='1000' step='0.1' placeholder='95.5'")}
+              ${renderField("Heart Rate (bpm)", "heart_rate", "number", "", "min='20' max='250' placeholder='72'")}
+            </div>
+
+            <div class="form-grid">
+              ${renderField("Temperature (°C)", "temperature", "number", "", "min='25' max='45' step='0.1' placeholder='36.6'")}
+              ${renderField("Weight (kg)", "weight_kg", "number", "", "min='1' max='400' step='0.1' placeholder='70'")}
+            </div>
+
+            ${renderField(
+              "Prescriptions (comma separated)",
+              "prescriptions",
+              "text",
+              "",
+              "placeholder='Amlodipine 5mg OD, Paracetamol 500mg SOS'"
+            )}
+
+            <div class="field">
+              <label class="field-label" for="fld-clinical_notes">Clinical Notes & Physician Advice</label>
+              <textarea id="fld-clinical_notes" name="clinical_notes" placeholder="Diet advice, test orders, ultrasound findings..."></textarea>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-ghost" type="button" id="modal-cancel-btn">Cancel</button>
+            <button class="btn btn-primary" type="submit" id="modal-submit-btn">Save Medical Record</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    document.body.appendChild(backdrop);
+
+    const closeModal = () => {
+      backdrop.remove();
+      document.removeEventListener("keydown", onKeyDown);
+    };
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") closeModal();
+    };
+    document.addEventListener("keydown", onKeyDown);
+
+    backdrop.querySelector("#modal-close-btn").addEventListener("click", closeModal);
+    backdrop.querySelector("#modal-cancel-btn").addEventListener("click", closeModal);
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) closeModal();
+    });
+
+    const form = backdrop.querySelector("#modal-visit-form");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const raw = Object.fromEntries(new FormData(form).entries());
+
+      if (!raw.visit_date) return showToast("Visit date is required.", "error");
+      if (!raw.chief_complaint?.trim()) return showToast("Chief complaint is required.", "error");
+
+      const payload = {
+        visit_date: raw.visit_date,
+        chief_complaint: raw.chief_complaint.trim(),
+        diagnosis: raw.diagnosis?.trim() || "",
+        systolic_bp: raw.systolic_bp ? Number(raw.systolic_bp) : null,
+        diastolic_bp: raw.diastolic_bp ? Number(raw.diastolic_bp) : null,
+        fasting_glucose: raw.fasting_glucose ? Number(raw.fasting_glucose) : null,
+        heart_rate: raw.heart_rate ? Number(raw.heart_rate) : null,
+        temperature: raw.temperature ? Number(raw.temperature) : null,
+        weight_kg: raw.weight_kg ? Number(raw.weight_kg) : null,
+        prescriptions: (raw.prescriptions || "").split(",").map((s) => s.trim()).filter(Boolean),
+        clinical_notes: raw.clinical_notes?.trim() || "",
+        next_followup: raw.next_followup || null,
+      };
+
+      const submitBtn = backdrop.querySelector("#modal-submit-btn");
+      submitBtn.disabled = true;
+
+      try {
+        await request(`/patients/${patientId}/visits`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        showToast("Medical visit recorded successfully.");
+        closeModal();
+        renderPatientDetail(patientId);
+      } catch (err) {
+        showToast(err.message, "error");
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  // ==========================================
+  // DASHBOARD / OVERVIEW VIEW
+  // ==========================================
+  async function renderOverview() {
+    let data = {};
+    try {
+      data = await request("/dashboard");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+
+    currentProfile = data.profile || {};
+    const latest = data.latest_measurement || {};
+    const readings = data.measurements || [];
+    const hasTrendReadings = readings.some((reading) =>
+      reading.fasting_glucose != null || reading.systolic_bp != null || reading.diastolic_bp != null
+    );
+    const reminders = data.reminders || [];
+    const patientsCount = data.patients_count || 0;
+
+    const steps = latest.steps != null ? Number(latest.steps).toLocaleString() : "—";
+    const activeMin = latest.active_minutes != null ? `${latest.active_minutes} min` : "—";
+    const sleep = latest.sleep_hours != null ? `${latest.sleep_hours} hrs` : "—";
+    const bmi = currentProfile.bmi != null ? currentProfile.bmi : "—";
+
+    const contentHtml = `
+      <section class="page-heading">
+        <div>
+          <span class="eyebrow">${icons.sparkle} YOUR HEALTH WORKSPACE</span>
+          <h1>Welcome, ${escapeHtml(currentUser?.name || data.name || "there")}</h1>
+          <p>Your personal check-ins, daily reminders, and patient notes, together in one place.</p>
+        </div>
+        <div class="page-heading-actions">
+          <button class="btn btn-secondary" data-page="patients" type="button">
+            ${icons.patients}
+            <span>Patient records</span>
+          </button>
+          <button class="btn btn-primary" data-page="measurements" type="button">
+            ${icons.plus}
+            <span>Log a check-in</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Metric Cards Grid -->
+      <div class="metric-grid">
+        <div class="metric-card mc-cyan">
+          <div class="metric-top">
+            <span class="metric-label">DAILY STEPS</span>
+            <div class="metric-icon cyan">${icons.chart}</div>
+          </div>
+          <div class="metric-value">${steps}</div>
+          <div class="metric-sub">${latest.steps != null ? "From your latest check-in" : "No recent entry"}</div>
+          <div class="metric-bar">
+            <div class="metric-bar-fill" style="width:${latest.steps ? Math.min(100, (latest.steps / 10000) * 100) : 0}%;background:var(--cyan);"></div>
+          </div>
+        </div>
+
+        <div class="metric-card mc-emerald">
+          <div class="metric-top">
+            <span class="metric-label">ACTIVE TIME</span>
+            <div class="metric-icon emerald">${icons.pulse}</div>
+          </div>
+          <div class="metric-value">${activeMin}</div>
+          <div class="metric-sub">${latest.active_minutes != null ? "From your latest check-in" : "No recent entry"}</div>
+          <div class="metric-bar">
+            <div class="metric-bar-fill" style="width:${latest.active_minutes ? Math.min(100, (latest.active_minutes / 60) * 100) : 0}%;background:var(--emerald);"></div>
+          </div>
+        </div>
+
+        <div class="metric-card mc-violet">
+          <div class="metric-top">
+            <span class="metric-label">SLEEP LOGGED</span>
+            <div class="metric-icon violet">${icons.calendar}</div>
+          </div>
+          <div class="metric-value">${sleep}</div>
+          <div class="metric-sub">${latest.sleep_hours != null ? "From your latest check-in" : "No recent entry"}</div>
+          <div class="metric-bar">
+            <div class="metric-bar-fill" style="width:${latest.sleep_hours ? Math.min(100, (latest.sleep_hours / 8) * 100) : 0}%;background:var(--violet);"></div>
+          </div>
+        </div>
+
+        <div class="metric-card mc-amber">
+          <div class="metric-top">
+            <span class="metric-label">BMI</span>
+            <div class="metric-icon amber">${icons.user}</div>
+          </div>
+          <div class="metric-value">${bmi}</div>
+          <div class="metric-sub">${currentProfile.bmi != null ? "Calculated from height & weight" : "Update profile measurements"}</div>
+          <div class="metric-bar">
+            <div class="metric-bar-fill" style="width:${currentProfile.bmi ? Math.min(100, (currentProfile.bmi / 30) * 100) : 0}%;background:var(--amber);"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Patient records quick link -->
+      <div class="patient-banner">
+        <div class="patient-banner-text">
+          <h3>${patientsCount} patient record${patientsCount === 1 ? "" : "s"}</h3>
+          <p>Add a patient profile or review the visit notes and follow-up dates you have saved.</p>
+        </div>
+        <button class="btn btn-primary" data-page="patients" type="button">
+          <span>Manage Patients</span>
+          ${icons.arrow}
+        </button>
+      </div>
+
+      <!-- Main Overview 2-Column Grid -->
+      <div class="overview-grid">
+        <!-- Interactive Chart & History Panel -->
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+            <div>
+              <span class="eyebrow">TREND ANALYSIS</span>
+              <h2 style="font-size:16px;font-weight:700;margin-top:2px;">Health readings over time</h2>
+            </div>
+            <button class="text-btn" data-page="measurements" type="button">
+              <span>Full Vitals Log</span> ${icons.arrow}
+            </button>
+          </div>
+
+          <p class="chart-caption">Glucose and blood pressure use separate axes because they have different units.</p>
+          ${hasTrendReadings
+            ? `<div style="height:240px;position:relative;"><canvas id="overview-chart"></canvas></div>`
+            : `<div class="chart-empty">Your trend will appear after a check-in with glucose or blood pressure readings.</div>`}
+
+          <div style="margin-top:24px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;">
+              Recent Check-ins
+            </div>
+            ${
+              readings.length
+                ? `
+              <table class="readings-table">
+                <thead>
+                  <tr>
+                    <th>Recorded On</th>
+                    <th>Fasting Glucose</th>
+                    <th>Blood Pressure</th>
+                    <th>Steps</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${readings
+                    .slice(0, 5)
+                    .map((r) => {
+                      const dt = new Date(r.recorded_at).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                      const gl = r.fasting_glucose != null ? `${r.fasting_glucose} mg/dL` : "—";
+                      const bp =
+                        r.systolic_bp != null && r.diastolic_bp != null
+                          ? `${r.systolic_bp}/${r.diastolic_bp} mmHg`
+                          : r.systolic_bp ?? r.diastolic_bp ?? "—";
+                      const st = r.steps != null ? r.steps.toLocaleString() : "—";
+                      return `
+                        <tr>
+                          <td><strong>${dt}</strong></td>
+                          <td><span style="color:var(--cyan);font-weight:600;">${gl}</span></td>
+                          <td><span style="color:var(--emerald-l);font-weight:600;">${bp}</span></td>
+                          <td>${st}</td>
+                        </tr>
+                      `;
+                    })
+                    .join("")}
+                </tbody>
+              </table>
+            `
+                : `
+              <div class="empty-state" style="padding:30px 0;">
+                <p>No check-in entries found. Log your first readings in Daily Vitals.</p>
+                <button class="btn btn-secondary btn-sm" data-page="measurements" type="button">
+                  ${icons.plus} <span>Log Vitals</span>
+                </button>
+              </div>
+            `
+            }
+          </div>
+        </div>
+
+        <!-- Reminders & Schedule Panel -->
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div>
+              <span class="eyebrow">DAILY REGIMEN</span>
+              <h2 style="font-size:16px;font-weight:700;margin-top:2px;">Today's Schedule</h2>
+            </div>
+            <button class="btn btn-secondary btn-sm" data-page="reminders" type="button">
+              ${icons.plus}
+            </button>
+          </div>
+
+          ${
+            reminders.length
+              ? `
+            <div class="reminders-list">
+              ${reminders
+                .slice(0, 6)
+                .map(
+                  (rem) => `
+                <div class="reminder-item">
+                  <button class="reminder-check ${rem.completed_today ? "done" : ""}" data-complete-id="${rem.id}" ${rem.completed_today ? "disabled" : ""} type="button">
+                    ${icons.check}
+                  </button>
+                  <div class="reminder-info">
+                    <div class="reminder-title">${escapeHtml(rem.title)}</div>
+                    <div class="reminder-note">${escapeHtml(rem.instruction || "Scheduled reminder")}</div>
+                  </div>
+                  <div class="reminder-time">${escapeHtml(rem.scheduled_time)}</div>
+                </div>
+              `
+                )
+                .join("")}
+            </div>
+          `
+              : `
+            <div class="empty-state" style="padding:40px 0;">
+              <div class="empty-icon">${icons.bell}</div>
+              <h3>No reminders active</h3>
+              <p>Add a reminder for a routine, meal, or medication schedule.</p>
+              <button class="btn btn-secondary btn-sm" data-page="reminders" type="button">
+                ${icons.plus} <span>Add Reminder</span>
+              </button>
+            </div>
+          `
+          }
+        </div>
+      </div>
+    `;
+
+    renderShell(contentHtml);
+
+    // Render Chart.js
+    if (window.Chart && hasTrendReadings) {
+      const reversed = [...readings].reverse().slice(-10);
+      const labels = reversed.map((r) =>
+        new Date(r.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      );
+      const glucoseData = reversed.map((r) => r.fasting_glucose);
+      const systolicData = reversed.map((r) => r.systolic_bp);
+      const diastolicData = reversed.map((r) => r.diastolic_bp);
+      const canvas = document.querySelector("#overview-chart");
+
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        destroyCurrentChart();
+        activeChart = new window.Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Fasting Glucose (mg/dL)",
+                data: glucoseData,
+                yAxisID: "glucose",
+                borderColor: "#06b6d4",
+                backgroundColor: "rgba(6, 182, 212, 0.12)",
+                fill: true,
+                tension: 0.35,
+                pointBackgroundColor: "#06b6d4",
+                pointRadius: 4,
+              },
+              {
+                label: "Systolic BP (mmHg)",
+                data: systolicData,
+                yAxisID: "pressure",
+                borderColor: "#10b981",
+                backgroundColor: "rgba(16, 185, 129, 0.08)",
+                fill: true,
+                tension: 0.35,
+                pointBackgroundColor: "#10b981",
+                pointRadius: 4,
+              },
+              {
+                label: "Diastolic BP (mmHg)",
+                data: diastolicData,
+                yAxisID: "pressure",
+                borderColor: "#8b5cf6",
+                backgroundColor: "rgba(139, 92, 246, 0.08)",
+                fill: false,
+                tension: 0.35,
+                pointBackgroundColor: "#8b5cf6",
+                pointRadius: 4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                labels: { color: "#94a3b8", font: { family: "Inter", size: 11 } },
+              },
+            },
+            scales: {
+              x: {
+                grid: { color: "rgba(255, 255, 255, 0.05)" },
+                ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
+              },
+              glucose: {
+                type: "linear",
+                position: "left",
+                title: { display: true, text: "Glucose (mg/dL)", color: "#94a3b8" },
+                grid: { color: "rgba(255, 255, 255, 0.05)" },
+                ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
+              },
+              pressure: {
+                type: "linear",
+                position: "right",
+                title: { display: true, text: "Blood pressure (mmHg)", color: "#94a3b8" },
+                grid: { drawOnChartArea: false },
+                ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
+              },
+            },
+          },
+        });
+      }
+    }
+
+    // Complete reminder button listener
+    document.querySelectorAll("[data-complete-id]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.completeId;
+        try {
+          await request(`/reminders/${id}/complete`, { method: "POST" });
+          showToast("Reminder marked complete!");
+          renderOverview();
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      });
+    });
+  }
+
+  // ==========================================
+  // DAILY VITALS & MEASUREMENTS VIEW
+  // ==========================================
+  async function renderMeasurements() {
+    let data = {};
+    try {
+      data = await request("/dashboard");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+
+    const readings = data.measurements || [];
+    const hasTrendReadings = readings.some((reading) =>
+      reading.fasting_glucose != null || reading.systolic_bp != null || reading.diastolic_bp != null
+    );
+
+    const contentHtml = `
+      <section class="page-heading">
+        <div>
+          <span class="eyebrow">${icons.chart} PERSONAL HEALTH LOG</span>
+          <h1>Daily Health Check-ins</h1>
+          <p>Record personal measurements, activity, and sleep over time. Use your clinician’s guidance to interpret readings.</p>
+        </div>
+      </section>
+
+      <div class="health-layout">
+        <div>
+          <!-- Entry Form Card -->
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+              <div>
+                <span class="eyebrow">NEW MEASUREMENT</span>
+                <h2 style="font-size:16px;font-weight:700;margin-top:2px;">New check-in</h2>
+              </div>
+              <span class="mono" style="font-size:12px;color:var(--cyan);">${new Date().toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+              })}</span>
+            </div>
+
+            <form id="vitals-entry-form" class="form-stack">
+              <div class="form-grid">
+                ${renderField("Daily Steps", "steps", "number", "", "min='0' max='200000' placeholder='e.g. 7500'")}
+                ${renderField("Active Minutes", "active_minutes", "number", "", "min='0' max='1440' placeholder='e.g. 45'")}
+              </div>
+
+              <div class="form-grid">
+                ${renderField("Sleep Hours", "sleep_hours", "number", "", "min='0' max='24' step='0.1' placeholder='e.g. 7.5'")}
+                ${renderField("Fasting Glucose (mg/dL)", "fasting_glucose", "number", "", "min='20' max='1000' step='0.1' placeholder='e.g. 92'")}
+              </div>
+
+              <div class="form-grid">
+                ${renderField("Systolic Pressure (mmHg)", "systolic_bp", "number", "", "min='50' max='300' placeholder='e.g. 118'")}
+                ${renderField("Diastolic Pressure (mmHg)", "diastolic_bp", "number", "", "min='30' max='200' placeholder='e.g. 76'")}
+              </div>
+
+              <button class="btn btn-primary" type="submit" id="btn-save-vitals" style="margin-top:8px;">
+                <span>Save Vitals Entry</span>
+                ${icons.arrow}
+              </button>
+            </form>
+          </div>
+
+          <!-- Interactive Trend Chart -->
+          <div class="chart-wrapper">
+            <div class="chart-title">Your recorded trends</div>
+            <p class="chart-caption">Glucose and blood pressure use separate axes because they have different units.</p>
+            ${hasTrendReadings
+              ? `<div style="height:250px;position:relative;"><canvas id="vitals-trend-chart"></canvas></div>`
+              : `<div class="chart-empty">Add glucose or blood pressure to a check-in to see a trend here.</div>`}
+          </div>
+
+          <!-- History Table -->
+          <div class="card" style="margin-top:20px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+              <h3 style="font-size:15px;font-weight:700;">Recorded Entries History</h3>
+              <span class="mono" style="font-size:11px;color:var(--text-muted);">${readings.length} total entries</span>
+            </div>
+
+            ${
+              readings.length
+                ? `
+              <div style="overflow-x:auto;">
+                <table class="history-table">
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>Steps</th>
+                      <th>Active Time</th>
+                      <th>Sleep</th>
+                      <th>Glucose</th>
+                      <th>Blood Pressure</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${readings
+                      .map((r) => `
+                      <tr>
+                        <td><strong>${new Date(r.recorded_at).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}</strong></td>
+                        <td>${r.steps != null ? r.steps.toLocaleString() : "—"}</td>
+                        <td>${r.active_minutes != null ? `${r.active_minutes} min` : "—"}</td>
+                        <td>${r.sleep_hours != null ? `${r.sleep_hours} hrs` : "—"}</td>
+                        <td><span style="color:var(--cyan);font-weight:600;">${r.fasting_glucose != null ? `${r.fasting_glucose} mg/dL` : "—"}</span></td>
+                        <td><span style="color:var(--emerald-l);font-weight:600;">${
+                          r.systolic_bp != null && r.diastolic_bp != null
+                            ? `${r.systolic_bp}/${r.diastolic_bp} mmHg`
+                            : r.systolic_bp ?? r.diastolic_bp ?? "—"
+                        }</span></td>
+                      </tr>
+                    `)
+                      .join("")}
+                  </tbody>
+                </table>
+              </div>
+            `
+                : `
+              <div class="empty-state" style="padding:30px 0;">
+                <p>No check-in entries logged yet. Fill out the form above to record your first entry.</p>
+              </div>
+            `
+            }
+          </div>
+        </div>
+
+        <!-- Prototype and interpretation note -->
+        <aside>
+          <div class="card" style="background:linear-gradient(135deg, rgba(6,182,212,0.06), rgba(20,184,166,0.04));border-color:rgba(6,182,212,0.18);">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+              <div style="width:32px;height:32px;border-radius:8px;background:var(--cyan-dim);color:var(--cyan);display:flex;align-items:center;justify-content:center;">
+                ${icons.shield}
+              </div>
+              <span style="font-weight:700;font-size:14px;">A note about this log</span>
+            </div>
+            <p style="font-size:12px;color:var(--text-subtle);line-height:1.7;margin-bottom:14px;">
+              Beluga stores the measurements you enter but does not interpret readings or recommend care. Use synthetic data in this prototype, and follow your clinician’s guidance.
+            </p>
+          </div>
+        </aside>
+      </div>
+    `;
+
+    renderShell(contentHtml);
+
+    // Render Trend Chart
+    if (window.Chart && hasTrendReadings) {
+      const reversed = [...readings].reverse().slice(-14);
+      const labels = reversed.map((r) =>
+        new Date(r.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      );
+      const glucoseData = reversed.map((r) => r.fasting_glucose);
+      const systolicData = reversed.map((r) => r.systolic_bp);
+      const diastolicData = reversed.map((r) => r.diastolic_bp);
+      const canvas = document.querySelector("#vitals-trend-chart");
+
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        destroyCurrentChart();
+        activeChart = new window.Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Fasting Glucose",
+                data: glucoseData,
+                yAxisID: "glucose",
+                borderColor: "#06b6d4",
+                backgroundColor: "rgba(6, 182, 212, 0.1)",
+                tension: 0.3,
+                pointRadius: 4,
+              },
+              {
+                label: "Systolic BP",
+                data: systolicData,
+                yAxisID: "pressure",
+                borderColor: "#10b981",
+                backgroundColor: "rgba(16, 185, 129, 0.1)",
+                tension: 0.3,
+                pointRadius: 4,
+              },
+              {
+                label: "Diastolic BP",
+                data: diastolicData,
+                yAxisID: "pressure",
+                borderColor: "#8b5cf6",
+                backgroundColor: "rgba(139, 92, 246, 0.1)",
+                tension: 0.3,
+                pointRadius: 4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: "#94a3b8", font: { family: "Inter", size: 11 } } },
+            },
+            scales: {
+              x: {
+                grid: { color: "rgba(255, 255, 255, 0.05)" },
+                ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
+              },
+              glucose: {
+                type: "linear",
+                position: "left",
+                title: { display: true, text: "Glucose (mg/dL)", color: "#94a3b8" },
+                grid: { color: "rgba(255, 255, 255, 0.05)" },
+                ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
+              },
+              pressure: {
+                type: "linear",
+                position: "right",
+                title: { display: true, text: "Blood pressure (mmHg)", color: "#94a3b8" },
+                grid: { drawOnChartArea: false },
+                ticks: { color: "#94a3b8", font: { family: "Inter", size: 10 } },
+              },
+            },
+          },
+        });
+      }
+    }
+
+    // Submit form handler
+    const form = document.querySelector("#vitals-entry-form");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const raw = Object.fromEntries(new FormData(form).entries());
+      const payload = {};
+
+      for (const [key, val] of Object.entries(raw)) {
+        if (val !== "") {
+          payload[key] = Number(val);
+        }
+      }
+
+      if (!Object.keys(payload).length) {
+        return showToast("Please enter at least one measurement.", "error");
+      }
+
+      const submitBtn = document.querySelector("#btn-save-vitals");
+      submitBtn.disabled = true;
+
+      try {
+        await request("/measurements", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        showToast("Vitals entry saved successfully!");
+        renderMeasurements();
+      } catch (err) {
+        showToast(err.message, "error");
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  // ==========================================
+  // REMINDERS & NOTIFICATIONS VIEW
+  // ==========================================
+  async function renderReminders() {
+    let reminders = [];
+    try {
+      reminders = await request("/reminders");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+
+    const contentHtml = `
+      <section class="page-heading">
+        <div>
+          <span class="eyebrow">${icons.bell} SCHEDULE & REMINDERS</span>
+          <h1>Clinical & Medication Routine</h1>
+          <p>Organize recurring clinical check-ins, medication intake reminders, and daily habits.</p>
+        </div>
+      </section>
+
+      <div class="reminder-layout">
+        <!-- Reminders List -->
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+            <div>
+              <span class="eyebrow">ACTIVE ROUTINE</span>
+              <h2 style="font-size:16px;font-weight:700;margin-top:2px;">Scheduled Reminders (${reminders.length})</h2>
+            </div>
+          </div>
+
+          ${
+            reminders.length
+              ? `
+            <div class="reminders-list">
+              ${reminders
+                .map(
+                  (item) => `
+                <div class="reminder-item">
+                  <div class="reminder-time">${escapeHtml(item.scheduled_time)}</div>
+                  <div class="reminder-info">
+                    <div class="reminder-title">${escapeHtml(item.title)}</div>
+                    <div class="reminder-note">${escapeHtml(item.instruction || "Clinical reminder")}</div>
+                  </div>
+                  <button class="reminder-del" data-delete-id="${item.id}" title="Delete reminder" type="button">
+                    ${icons.trash}
+                  </button>
+                </div>
+              `
+                )
+                .join("")}
+            </div>
+          `
+              : `
+            <div class="empty-state" style="padding:40px 0;">
+              <div class="empty-icon">${icons.bell}</div>
+              <h3>No reminders created yet</h3>
+              <p>Add a new reminder using the form on the right to keep your daily clinical routine on track.</p>
+            </div>
+          `
+          }
+        </div>
+
+        <!-- Add Reminder Form Panel -->
+        <div class="card">
+          <div style="margin-bottom:18px;">
+            <span class="eyebrow">NEW REMINDER</span>
+            <h2 style="font-size:16px;font-weight:700;margin-top:2px;">Create Schedule Entry</h2>
+          </div>
+
+          <form id="reminder-form" class="form-stack">
+            ${renderField("Reminder Title *", "title", "text", "", "required placeholder='e.g. Check Blood Pressure'")}
+            ${renderField("Scheduled Time *", "scheduled_time", "time", "08:30", "required")}
+
+            <div class="field">
+              <label class="field-label" for="fld-instruction">Instructions / Notes</label>
+              <textarea id="fld-instruction" name="instruction" placeholder="Take with food, log in app..."></textarea>
+            </div>
+
+            <button class="btn btn-primary btn-wide" type="submit" id="btn-save-reminder" style="margin-top:8px;">
+              ${icons.plus}
+              <span>Add to Schedule</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    `;
+
+    renderShell(contentHtml);
+
+    // Form submission
+    const form = document.querySelector("#reminder-form");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const raw = Object.fromEntries(new FormData(form).entries());
+
+      if (!raw.title?.trim()) return showToast("Reminder title is required.", "error");
+      if (!raw.scheduled_time) return showToast("Time is required.", "error");
+
+      const payload = {
+        title: raw.title.trim(),
+        scheduled_time: raw.scheduled_time,
+        instruction: raw.instruction?.trim() || "",
+      };
+
+      const btn = document.querySelector("#btn-save-reminder");
+      btn.disabled = true;
+
+      try {
+        await request("/reminders", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        showToast("Reminder created successfully!");
+        renderReminders();
+      } catch (err) {
+        showToast(err.message, "error");
+        btn.disabled = false;
+      }
+    });
+
+    // Delete buttons
+    document.querySelectorAll("[data-delete-id]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.deleteId;
+        try {
+          await request(`/reminders/${id}`, { method: "DELETE" });
+          showToast("Reminder removed.");
+          renderReminders();
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      });
+    });
+  }
+
+  // ==========================================
+  // CLINICIAN / USER PROFILE VIEW
+  // ==========================================
+  async function renderProfile() {
+    let session = {};
+    try {
+      session = await request("/me");
+      currentUser = session.user;
+      currentProfile = session.profile || {};
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+
+    const prof = currentProfile || {};
+    const initials = (currentUser?.name || "BH")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+
+    const contentHtml = `
+      <section class="page-heading">
+        <div>
+          <span class="eyebrow">${icons.user} ACCOUNT SETTINGS</span>
+          <h1>Practitioner Profile</h1>
+          <p>Manage account credentials, clinical identifiers, and biometric defaults.</p>
+        </div>
+      </section>
+
+      <div class="profile-layout">
+        <!-- Edit Profile Form -->
+        <div class="card">
+          <div style="margin-bottom:20px;">
+            <span class="eyebrow">PERSONAL DETAILS</span>
+            <h2 style="font-size:16px;font-weight:700;margin-top:2px;">Edit Clinician Information</h2>
+          </div>
+
+          <form id="profile-edit-form" class="form-stack">
+            <div class="form-grid">
+              ${renderField("Full Name *", "name", "text", currentUser?.name || "", "required")}
+              ${renderField("Email Address", "email", "email", currentUser?.email || "", "disabled title='Email cannot be changed'")}
+            </div>
+
+            <div class="form-grid-3">
+              ${renderField("Age", "age", "number", prof.age ?? "", "min='0' max='150' placeholder='Years'")}
+              <div class="field">
+                <label class="field-label" for="fld-gender">Gender</label>
+                <select id="fld-gender" name="gender">
+                  <option value="">Prefer not to say</option>
+                  ${["Female", "Male", "Non-binary", "Self-describe"]
+                    .map((g) => `<option value="${g}" ${prof.gender === g ? "selected" : ""}>${g}</option>`)
+                    .join("")}
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label" for="fld-blood_type">Blood Type</label>
+                <select id="fld-blood_type" name="blood_type">
+                  <option value="">Not provided</option>
+                  ${["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
+                    .map((b) => `<option value="${b}" ${prof.blood_type === b ? "selected" : ""}>${b}</option>`)
+                    .join("")}
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              ${renderField("Height (cm)", "height_cm", "number", prof.height_cm ?? "", "min='30' max='300' placeholder='175'")}
+              ${renderField("Weight (kg)", "weight_kg", "number", prof.weight_kg ?? "", "min='20' max='500' step='0.1' placeholder='72'")}
+            </div>
+
+            ${renderField("Location / Clinic", "location", "text", prof.location || "", "placeholder='Beluga Health Center, Floor 4'")}
+
+            <button class="btn btn-primary" type="submit" id="btn-save-profile" style="margin-top:10px;">
+              <span>Save Profile Updates</span>
+              ${icons.arrow}
+            </button>
+          </form>
+        </div>
+
+        <!-- Profile Presentation Card -->
+        <aside class="profile-aside-card">
+          <div class="profile-aside-avatar">${escapeHtml(initials)}</div>
+          <div class="profile-aside-name">${escapeHtml(currentUser?.name || "Clinician")}</div>
+          <div class="profile-aside-email">${escapeHtml(currentUser?.email || "")}</div>
+          <div class="profile-aside-badge">${icons.shield} Verified Practitioner</div>
+
+          <div style="margin-top:24px;text-align:left;font-size:12px;display:grid;gap:10px;">
+            <div class="profile-meta-row"><span>Calculated BMI:</span><strong style="color:var(--cyan);">${prof.bmi ?? "—"}</strong></div>
+            <div class="profile-meta-row"><span>Height:</span><strong>${prof.height_cm ? `${prof.height_cm} cm` : "—"}</strong></div>
+            <div class="profile-meta-row"><span>Weight:</span><strong>${prof.weight_kg ? `${prof.weight_kg} kg` : "—"}</strong></div>
+            <div class="profile-meta-row"><span>Blood Type:</span><strong>${prof.blood_type || "—"}</strong></div>
+          </div>
+        </aside>
+      </div>
+    `;
+
+    renderShell(contentHtml);
+
+    // Profile submit handler
+    const form = document.querySelector("#profile-edit-form");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const raw = Object.fromEntries(new FormData(form).entries());
+
+      if (!raw.name?.trim()) return showToast("Name is required.", "error");
+
+      const payload = {
+        name: raw.name.trim(),
+        age: raw.age ? Number(raw.age) : null,
+        gender: raw.gender || "",
+        blood_type: raw.blood_type || "",
+        height_cm: raw.height_cm ? Number(raw.height_cm) : null,
+        weight_kg: raw.weight_kg ? Number(raw.weight_kg) : null,
+        location: raw.location?.trim() || "",
+        conditions: prof.conditions || [],
+        medications: prof.medications || [],
+        appetite: prof.appetite || "",
+        daily_routine: prof.daily_routine || "",
+        family_history: prof.family_history || "",
+        prescriptions: prof.prescriptions || [],
+        profile_image: prof.profile_image || "",
+      };
+
+      const btn = document.querySelector("#btn-save-profile");
+      btn.disabled = true;
+
+      try {
+        currentProfile = await request("/profile", {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        if (currentUser) currentUser.name = payload.name;
+        showToast("Profile updated successfully!");
+        renderProfile();
+      } catch (err) {
+        showToast(err.message, "error");
+        btn.disabled = false;
+      }
+    });
+  }
+
+  // ==========================================
+  // ROOT ROUTER & DISPATCHER
+  // ==========================================
+  async function render() {
+    if (!token) {
+      return renderAuth();
+    }
+
+    try {
+      if (!currentUser) {
+        const session = await request("/me");
+        currentUser = session.user;
+        currentProfile = session.profile;
+      }
+
+      if (activePage === "patients") {
+        await renderPatients();
+      } else if (activePage === "patient-detail" && activePatientId) {
+        await renderPatientDetail(activePatientId);
+      } else if (activePage === "overview") {
+        await renderOverview();
+      } else if (activePage === "measurements") {
+        await renderMeasurements();
+      } else if (activePage === "reminders") {
+        await renderReminders();
+      } else if (activePage === "profile") {
+        await renderProfile();
+      } else {
+        await renderPatients();
+      }
+    } catch (err) {
+      const isConnectionError = /fetch|did not return data/i.test(err.message || "");
+      destroyCurrentChart();
+      appNode.innerHTML = `
+        <section class="offline-state">
+          <div class="offline-icon">${icons.alert}</div>
+          <h1>${isConnectionError ? "Server Connection Paused" : "Workspace Could Not Load"}</h1>
+          <p>${escapeHtml(err.message || "Please try loading your workspace again.")}</p>
+          <div style="display:flex;gap:12px;margin-top:10px;">
+            <button class="btn btn-primary" id="btn-reconnect" type="button">Try Reconnecting</button>
+            <button class="btn btn-secondary" id="btn-offline-signout" type="button">Sign Out</button>
+          </div>
+        </section>
+      `;
+      document.querySelector("#btn-reconnect")?.addEventListener("click", () => render());
+      document.querySelector("#btn-offline-signout")?.addEventListener("click", () => signOut());
+    }
+  }
+
+  // Register service worker if supported
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  }
+
+  // Start the application
+  render();
+})();
