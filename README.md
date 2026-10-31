@@ -46,6 +46,18 @@ The Flutter app restores the Firebase sign-in session and loads its Firestore pr
 
 Existing accounts and data in MongoDB are not automatically imported into Firebase. Users need Firebase accounts, and any old data must be migrated separately before it appears in the mobile app.
 
+## Firebase setup for the Flutter app
+
+The mobile app is configured for Firebase project `beluga-c1b2b`, using the `beluga-health` Firestore database in `asia-south1`. Enable Email/Password in Firebase Authentication and ensure that database exists before running the app. The checked-in `mobile/lib/firebase_options.dart` contains client configuration, not server credentials.
+
+To deploy the owner-scoped Firestore rules and indexes to that project:
+
+```powershell
+firebase deploy --project beluga-c1b2b --only firestore:rules,firestore:indexes
+```
+
+Google sign-in is optional; enable its provider in Firebase Authentication and configure an OAuth client ID before building with `--dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID`. Review Firebase usage and pricing before inviting users or storing real health data.
+
 ## Run the Legacy Web API
 
 These server instructions apply to the legacy web client only. The Flutter mobile app does not need this API. From the repository root on Windows PowerShell:
