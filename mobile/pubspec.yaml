@@ -9,11 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_secure_storage: ^9.2.4
   flutter_local_notifications: ^19.5.0
   flutter_timezone: ^4.1.1
   google_sign_in: ^6.2.2
-  http: ^1.2.2
   image_picker: ^1.1.2
   timezone: ^0.10.1
   firebase_core: ^5.1.0

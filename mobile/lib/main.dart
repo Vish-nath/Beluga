@@ -3,33 +3,16 @@ import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import 'firebase_data.dart' show HealthApi;
 import 'firebase_options.dart';
 import 'reminder_notifications.dart';
 
-const defaultApiBaseUrl = String.fromEnvironment(
-  'API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:8000/api',
-);
-const configuredApiBaseUrl = String.fromEnvironment('API_BASE_URL');
 const googleServerClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
-
-String get platformDefaultApiBaseUrl {
-  if (configuredApiBaseUrl.isNotEmpty) return configuredApiBaseUrl;
-  return defaultTargetPlatform == TargetPlatform.macOS
-      ? 'http://127.0.0.1:8000/api'
-      : defaultApiBaseUrl;
-}
-
-const secureStorage = FlutterSecureStorage();
 
 void showFirebaseCloudInfo(BuildContext context) {
   showDialog<void>(
@@ -47,90 +30,6 @@ void showFirebaseCloudInfo(BuildContext context) {
       ],
     ),
   );
-}
-
-class LegacyHealthApi {
-  LegacyHealthApi(this.token, {this.baseUrl});
-
-  final String? token;
-  final String? baseUrl;
-
-  String get activeBaseUrl => (baseUrl != null && baseUrl!.trim().isNotEmpty)
-      ? baseUrl!.trim().replaceAll(RegExp(r'/+$'), '')
-      : platformDefaultApiBaseUrl;
-
-  Future<dynamic> request(
-    String path, {
-    String method = 'GET',
-    Map<String, dynamic>? body,
-  }) async {
-    final cleanPath = path.startsWith('/') ? path : '/$path';
-    final uri = Uri.parse('$activeBaseUrl$cleanPath');
-    final headers = <String, String>{'Content-Type': 'application/json'};
-    if (token != null) headers['Authorization'] = 'Bearer $token';
-
-    late http.Response response;
-    try {
-      switch (method) {
-        case 'POST':
-          response = await http
-              .post(uri, headers: headers, body: jsonEncode(body))
-              .timeout(const Duration(seconds: 15));
-          break;
-        case 'PUT':
-          response = await http
-              .put(uri, headers: headers, body: jsonEncode(body))
-              .timeout(const Duration(seconds: 15));
-          break;
-        case 'DELETE':
-          response = await http
-              .delete(uri, headers: headers)
-              .timeout(const Duration(seconds: 15));
-          break;
-        default:
-          response = await http
-              .get(uri, headers: headers)
-              .timeout(const Duration(seconds: 15));
-          break;
-      }
-    } catch (e) {
-      throw Exception(
-        'Could not connect to server at $activeBaseUrl. Please check your network or server URL.',
-      );
-    }
-
-    if (response.statusCode == 204) return null;
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final detail = decoded is Map ? decoded['detail'] : null;
-      throw Exception(detail ?? 'Request failed (${response.statusCode}).');
-    }
-    return decoded;
-  }
-
-  Future<Map<String, dynamic>> signIn(String email, String password) async =>
-      Map<String, dynamic>.from(await request('/login', method: 'POST', body: {
-        'email': email,
-        'password': password,
-      }));
-
-  Future<Map<String, dynamic>> signInWithGoogle(String idToken) async =>
-      Map<String, dynamic>.from(
-          await request('/auth/google', method: 'POST', body: {
-        'id_token': idToken,
-      }));
-
-  Future<Map<String, dynamic>> register(
-    String name,
-    String email,
-    String password,
-  ) async =>
-      Map<String, dynamic>.from(
-          await request('/register', method: 'POST', body: {
-        'name': name,
-        'email': email,
-        'password': password,
-      }));
 }
 
 Future<void> main() async {
@@ -152,16 +51,15 @@ class BelugaApp extends StatefulWidget {
 class _BelugaAppState extends State<BelugaApp> {
   String? _token;
   Map<String, dynamic>? _user;
-  final String _baseUrl = 'Firebase Firestore · Mumbai';
   bool _checkingSession = true;
 
   @override
   void initState() {
     super.initState();
-    _loadConfigAndRestoreSession();
+    _restoreSession();
   }
 
-  Future<void> _loadConfigAndRestoreSession() async {
+  Future<void> _restoreSession() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       _token = user.uid;
@@ -180,8 +78,6 @@ class _BelugaAppState extends State<BelugaApp> {
     }
     if (mounted) setState(() => _checkingSession = false);
   }
-
-  void _updateBaseUrl(String _) {}
 
   Future<void> _acceptSession(Map<String, dynamic> result) async {
     setState(() {
@@ -261,176 +157,15 @@ class _BelugaAppState extends State<BelugaApp> {
             : _token == null
                 ? AuthScreen(
                     key: const ValueKey('sign-in'),
-                    baseUrl: _baseUrl,
-                    onUpdateBaseUrl: _updateBaseUrl,
                     onAuthenticated: _acceptSession,
                   )
                 : HealthHome(
                     key: const ValueKey('signed-in'),
                     token: _token!,
-                    baseUrl: _baseUrl,
                     user: _user!,
                     onSignOut: _signOut,
-                    onUpdateBaseUrl: _updateBaseUrl,
                   ),
       ),
-    );
-  }
-}
-
-// ==========================================
-// SERVER CONFIGURATION DIALOG
-// ==========================================
-
-class ServerConfigDialog extends StatefulWidget {
-  const ServerConfigDialog({
-    required this.currentUrl,
-    required this.onSave,
-    super.key,
-  });
-
-  final String currentUrl;
-  final ValueChanged<String> onSave;
-
-  @override
-  State<ServerConfigDialog> createState() => _ServerConfigDialogState();
-}
-
-class _ServerConfigDialogState extends State<ServerConfigDialog> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.currentUrl);
-  bool _testing = false;
-  String? _testResult;
-  bool _testSuccess = false;
-
-  Future<void> _testConnection() async {
-    setState(() {
-      _testing = true;
-      _testResult = null;
-    });
-    final cleanUrl = _controller.text.trim().replaceAll(RegExp(r'/+$'), '');
-    try {
-      final res = await http
-          .get(Uri.parse('$cleanUrl/health'))
-          .timeout(const Duration(seconds: 5));
-      if (res.statusCode == 200) {
-        setState(() {
-          _testSuccess = true;
-          _testResult = 'Connected successfully to Beluga Server!';
-        });
-      } else {
-        setState(() {
-          _testSuccess = false;
-          _testResult = 'Server responded with code ${res.statusCode}';
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _testSuccess = false;
-        _testResult = 'Connection failed: $e';
-      });
-    } finally {
-      if (mounted) setState(() => _testing = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Row(
-        children: [
-          Icon(Icons.dns_outlined, color: Color(0xff176b55)),
-          SizedBox(width: 8),
-          Text('Server Connection'),
-        ],
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Enter the address of your PC server or public tunnel:',
-              style: TextStyle(fontSize: 13, color: Colors.black87),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _controller,
-              decoration: const InputDecoration(
-                labelText: 'API Base URL',
-                hintText: 'http://192.168.1.15:8000/api',
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              children: [
-                ActionChip(
-                  label: const Text('Emulator', style: TextStyle(fontSize: 11)),
-                  onPressed: () =>
-                      _controller.text = 'http://10.0.2.2:8000/api',
-                ),
-                ActionChip(
-                  label: Text(
-                    defaultTargetPlatform == TargetPlatform.macOS
-                        ? 'This Mac'
-                        : 'Localhost',
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  onPressed: () =>
-                      _controller.text = 'http://127.0.0.1:8000/api',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _testing ? null : _testConnection,
-              icon: _testing
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.wifi_tethering, size: 16),
-              label: const Text('Test Connection'),
-            ),
-            if (_testResult != null) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _testSuccess
-                      ? const Color(0xffe8f5e9)
-                      : const Color(0xffffebee),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  _testResult!,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _testSuccess
-                        ? const Color(0xff2e7d32)
-                        : const Color(0xffc62828),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            widget.onSave(_controller.text.trim());
-            Navigator.pop(context);
-          },
-          child: const Text('Save'),
-        ),
-      ],
     );
   }
 }
@@ -441,15 +176,11 @@ class _ServerConfigDialogState extends State<ServerConfigDialog> {
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
-    required this.baseUrl,
-    required this.onUpdateBaseUrl,
     required this.onAuthenticated,
     this.initialRegister = false,
     super.key,
   });
 
-  final String baseUrl;
-  final ValueChanged<String> onUpdateBaseUrl;
   final ValueChanged<Map<String, dynamic>> onAuthenticated;
   final bool initialRegister;
 
@@ -492,8 +223,7 @@ class _AuthScreenState extends State<AuthScreen> {
       final idToken = (await account.authentication).idToken;
       if (idToken == null)
         throw Exception('Google did not return a verified sign-in token.');
-      final result = await HealthApi(null, baseUrl: widget.baseUrl)
-          .signInWithGoogle(idToken);
+      final result = await HealthApi(null).signInWithGoogle(idToken);
       if (_register) Navigator.of(context).pop();
       widget.onAuthenticated(result);
     } catch (error) {
@@ -513,7 +243,7 @@ class _AuthScreenState extends State<AuthScreen> {
       _error = null;
     });
     try {
-      final api = HealthApi(null, baseUrl: widget.baseUrl);
+      final api = HealthApi(null);
       final result = _register
           ? await api.register(
               _name.text.trim(),
@@ -530,7 +260,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  void _openServerConfig() {
+  void _openCloudInfo() {
     showFirebaseCloudInfo(context);
   }
 
@@ -572,7 +302,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               icon:
                                   const Icon(Icons.settings_outlined, size: 20),
                               tooltip: 'Firebase cloud data',
-                              onPressed: _openServerConfig,
+                              onPressed: _openCloudInfo,
                             ),
                           ],
                         ),
@@ -724,8 +454,6 @@ class _AuthScreenState extends State<AuthScreen> {
                                       pageBuilder: (context, animation,
                                               secondaryAnimation) =>
                                           AuthScreen(
-                                        baseUrl: widget.baseUrl,
-                                        onUpdateBaseUrl: widget.onUpdateBaseUrl,
                                         onAuthenticated: widget.onAuthenticated,
                                         initialRegister: true,
                                       ),
@@ -755,7 +483,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                         const SizedBox(height: 6),
                         GestureDetector(
-                          onTap: _openServerConfig,
+                          onTap: _openCloudInfo,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                                 vertical: 6, horizontal: 10),
@@ -772,7 +500,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 const SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
-                                    'Cloud storage: ${widget.baseUrl}',
+                                    'Cloud storage: Firebase Firestore',
                                     style: const TextStyle(
                                         fontSize: 11, color: Color(0xff176b55)),
                                     overflow: TextOverflow.ellipsis,
@@ -802,18 +530,14 @@ class _AuthScreenState extends State<AuthScreen> {
 class HealthHome extends StatefulWidget {
   const HealthHome({
     required this.token,
-    required this.baseUrl,
     required this.user,
     required this.onSignOut,
-    required this.onUpdateBaseUrl,
     super.key,
   });
 
   final String token;
-  final String baseUrl;
   final Map<String, dynamic> user;
   final VoidCallback onSignOut;
-  final ValueChanged<String> onUpdateBaseUrl;
 
   @override
   State<HealthHome> createState() => _HealthHomeState();
@@ -821,7 +545,7 @@ class HealthHome extends StatefulWidget {
 
 class _HealthHomeState extends State<HealthHome> {
   int _selected = 0;
-  late final HealthApi _api = HealthApi(widget.token, baseUrl: widget.baseUrl);
+  late final HealthApi _api = HealthApi(widget.token);
   StreamSubscription<NotificationResponse>? _notificationSubscription;
 
   @override
@@ -931,8 +655,6 @@ class _HealthHomeState extends State<HealthHome> {
       3 => RemindersPage(api: _api),
       4 => ProfilePage(
           api: _api,
-          baseUrl: widget.baseUrl,
-          onUpdateBaseUrl: widget.onUpdateBaseUrl,
         ),
       5 when widget.user['is_admin'] == true => AdminPage(api: _api),
       _ => const SizedBox.shrink(),
@@ -3068,14 +2790,10 @@ class _RemindersPageState extends State<RemindersPage> {
 class ProfilePage extends StatefulWidget {
   const ProfilePage({
     required this.api,
-    required this.baseUrl,
-    required this.onUpdateBaseUrl,
     super.key,
   });
 
   final HealthApi api;
-  final String baseUrl;
-  final ValueChanged<String> onUpdateBaseUrl;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -3090,7 +2808,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _profile = widget.api.request('/me');
   }
 
-  void _openServerConfig() {
+  void _openCloudInfo() {
     showFirebaseCloudInfo(context);
   }
 
@@ -3109,8 +2827,7 @@ class _ProfilePageState extends State<ProfilePage> {
             api: widget.api,
             user: user,
             profile: profile,
-            baseUrl: widget.baseUrl,
-            onOpenServerConfig: _openServerConfig,
+            onOpenCloudInfo: _openCloudInfo,
             onSaved: () => setState(() => _profile = widget.api.request('/me')),
           );
         },
@@ -3122,8 +2839,7 @@ class ProfileForm extends StatefulWidget {
     required this.api,
     required this.user,
     required this.profile,
-    required this.baseUrl,
-    required this.onOpenServerConfig,
+    required this.onOpenCloudInfo,
     required this.onSaved,
     super.key,
   });
@@ -3131,8 +2847,7 @@ class ProfileForm extends StatefulWidget {
   final HealthApi api;
   final Map<String, dynamic> user;
   final Map<String, dynamic> profile;
-  final String baseUrl;
-  final VoidCallback onOpenServerConfig;
+  final VoidCallback onOpenCloudInfo;
   final VoidCallback onSaved;
 
   @override
@@ -3186,7 +2901,7 @@ class _ProfileFormState extends State<ProfileForm> {
     );
     if (image == null) return;
     final bytes = await image.readAsBytes();
-    if (bytes.length > 1000000) {
+    if (bytes.length > 650000) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Choose a smaller profile image.')),
@@ -3412,7 +3127,7 @@ class _ProfileFormState extends State<ProfileForm> {
               Text('Account & Profile',
                   style: Theme.of(context).textTheme.headlineSmall),
               OutlinedButton.icon(
-                onPressed: widget.onOpenServerConfig,
+                onPressed: widget.onOpenCloudInfo,
                 icon: const Icon(Icons.cloud_outlined, size: 16),
                 label: const Text('Cloud Storage'),
               ),
