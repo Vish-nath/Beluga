@@ -1,30 +1,34 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:beluga_health/main.dart';
+import 'package:beluga_health/firebase_options.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const BelugaApp());
+  test('Firebase apps use the configured Beluga project', () {
+    expect(DefaultFirebaseOptions.android.projectId, 'beluga-c1b2b');
+    expect(DefaultFirebaseOptions.ios.projectId, 'beluga-c1b2b');
+    expect(DefaultFirebaseOptions.web.projectId, 'beluga-c1b2b');
+    expect(
+      DefaultFirebaseOptions.android.appId,
+      '1:733897267439:android:8672797ff661af6250631a',
+    );
+    expect(
+      DefaultFirebaseOptions.ios.iosBundleId,
+      'com.example.belugaHealth',
+    );
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('platform configuration selects an existing Firebase app', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    expect(
+      DefaultFirebaseOptions.currentPlatform.appId,
+      DefaultFirebaseOptions.android.appId,
+    );
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    expect(
+      DefaultFirebaseOptions.currentPlatform.appId,
+      DefaultFirebaseOptions.ios.appId,
+    );
+    debugDefaultTargetPlatformOverride = null;
   });
 }
