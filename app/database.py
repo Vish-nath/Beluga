@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -48,6 +49,8 @@ def initialize_database() -> None:
     database.users.create_index("email", unique=True)
     database.profiles.create_index("user_id", unique=True)
     database.sessions.create_index("token_hash", unique=True)
+    # TTL index: MongoDB automatically removes expired sessions after they expire
+    database.sessions.create_index("expires_at", expireAfterSeconds=0)
     database.measurements.create_index([("user_id", 1), ("recorded_at", -1)])
     database.reminders.create_index([("user_id", 1), ("active", 1), ("scheduled_time", 1)])
     database.dataset_summary.create_index("id", unique=True)
