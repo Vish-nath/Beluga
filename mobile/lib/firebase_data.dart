@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 class HealthApi {
-  HealthApi(this.token, {String? baseUrl});
+  HealthApi(this.token);
 
   static const _databaseId = 'beluga-health';
   static const _profileDocumentId = 'current';
@@ -202,8 +202,9 @@ class HealthApi {
         return _addVisit(parts[1], body ?? const {});
       }
       if (parts.length == 4 && parts[2] == 'visits') {
-        if (method == 'PUT')
+        if (method == 'PUT') {
           return _updateVisit(parts[1], parts[3], body ?? const {});
+        }
         if (method == 'DELETE') {
           await _deleteVisit(parts[1], parts[3]);
           return null;
@@ -348,8 +349,9 @@ class HealthApi {
 
   Future<void> _deleteReminder(String id) async {
     final reference = _reminders.doc(id);
-    if (!(await reference.get()).exists)
+    if (!(await reference.get()).exists) {
       throw StateError('Reminder not found.');
+    }
     await reference.delete();
   }
 
@@ -374,12 +376,16 @@ class HealthApi {
     }
     final id = _encodedId('$prescriptionId|$scheduledTime|$completedOn');
     final reference = _prescriptionCompletions.doc(id);
-    await reference.set({
-      'prescription_id': prescriptionId,
-      'scheduled_time': scheduledTime,
-      'completed_on': completedOn,
-      'created_at': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    await _database.runTransaction((transaction) async {
+      if (!(await transaction.get(reference)).exists) {
+        transaction.set(reference, {
+          'prescription_id': prescriptionId,
+          'scheduled_time': scheduledTime,
+          'completed_on': completedOn,
+          'created_at': FieldValue.serverTimestamp(),
+        });
+      }
+    });
     return {'completed': true, 'completed_on': completedOn};
   }
 
@@ -553,6 +559,7 @@ class HealthApi {
       ...body,
       'id': visit.id,
       'visit_date': visitDate.isEmpty ? _today() : visitDate,
+      'next_followup': body['next_followup'] as String? ?? '',
       'created_at': FieldValue.serverTimestamp(),
     });
     await patient.update({'updated_at': FieldValue.serverTimestamp()});
@@ -566,12 +573,14 @@ class HealthApi {
   ) async {
     final patient = await _findPatient(patientId);
     final visit = patient.collection('visits').doc(visitId);
-    if (!(await visit.get()).exists)
+    if (!(await visit.get()).exists) {
       throw StateError('Visit record not found.');
+    }
     final visitDate = (body['visit_date'] as String? ?? '').trim();
     await visit.update({
       ...body,
       'visit_date': visitDate.isEmpty ? _today() : visitDate,
+      'next_followup': body['next_followup'] as String? ?? '',
     });
     await patient.update({'updated_at': FieldValue.serverTimestamp()});
     return _decodeDocument(await visit.get());
@@ -580,8 +589,9 @@ class HealthApi {
   Future<void> _deleteVisit(String patientId, String visitId) async {
     final patient = await _findPatient(patientId);
     final visit = patient.collection('visits').doc(visitId);
-    if (!(await visit.get()).exists)
+    if (!(await visit.get()).exists) {
       throw StateError('Visit record not found.');
+    }
     await visit.delete();
     await patient.update({'updated_at': FieldValue.serverTimestamp()});
   }

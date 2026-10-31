@@ -2,26 +2,27 @@
 
 ## Personal health tracking, medication reminders, and patient records
 
-**Beluga Health** is a student project prototype with a Flutter mobile client, a web client, and a Python API backed by MongoDB. The long-term goal is to help users organize doctor-provided health information and build healthier daily habits.
+**Beluga Health** is a student project prototype with a Flutter mobile client and a separate legacy web client. The mobile app uses Firebase Authentication and Cloud Firestore directly; the web client still uses the Python API and MongoDB.
 
 | Client | Availability |
 | --- | --- |
 | Android | APK releases will be published on [GitHub Releases](https://github.com/Vish-nath/Beluga/releases). No release is available yet. |
 | macOS | Flutter macOS target can be built from source on a Mac; a downloadable Mac package is not currently published. |
-| Web | Served locally by FastAPI or as a static Firebase Hosting frontend. The API must be running and reachable for sign-in and saved data. |
+| Web | Static Firebase Hosting frontend backed by the legacy FastAPI/MongoDB API. |
 
 > **Prototype notice:** Use synthetic data only. This software is not a medical device and does not diagnose conditions, recommend medication, or replace a qualified clinician.
 
 ## What Works Today
 
-- **Accounts:** Register with email and password, sign in with a password, or use Google sign-in when OAuth is configured. Email OTP delivery is not implemented.
+- **Accounts:** The mobile app registers and signs in with Firebase Authentication email/password. Google sign-in is optional and requires enabling its provider in Firebase Authentication and configuring the mobile OAuth client. Email OTP delivery is not implemented.
 - **Personal profile:** View and edit age, gender, blood type, height, weight, location, conditions, appetite, daily routine, family health history, and a profile photo. BMI is calculated from height and weight.
 - **Doctor-entered prescriptions:** Save the medicine name, prescribed dose, quantity per intake, clinician instructions, and one or more daily intake times. The app records the instructions provided by the user and does not create or modify prescriptions.
 - **Health tracking:** Record steps, active minutes, sleep duration, fasting glucose, and blood pressure.
-- **Reminders:** Create meal or routine reminders in the app and get daily local notifications on Android/macOS. Notification actions can mark a medicine as taken or a reminder as done; completion records sync to the laptop server when the action opens the app.
+- **Reminders:** Create meal or routine reminders in the app and get daily local notifications on Android/macOS. Notification actions can mark a medicine as taken or a reminder as done; completion records are saved to the signed-in user's Firestore data.
 - **Routine guide:** The dashboard displays general, non-clinical prompts and the user's saved routine/appetite notes. It does not use a medical AI model or generate personalized diet treatment.
 - **Patient records:** Keep patient demographics, conditions, allergies, medications, and visit notes, including measurements and follow-up dates.
-- **MongoDB storage:** FastAPI connects to MongoDB using the `MONGODB_URI` connection string and stores app data in the configured `MONGODB_DATABASE` database. Server settings in the mobile client can be changed and tested.
+- **Mobile cloud storage:** The app loads and saves profiles, prescriptions, measurements, reminders, and patient records in Firestore under the signed-in account. Firestore rules restrict each account to its own data.
+- **Legacy web storage:** The web client and Python API continue to use MongoDB configured with `MONGODB_URI` and `MONGODB_DATABASE`.
 
 ## Planned Product Scope
 
@@ -35,16 +36,19 @@ The following items describe the intended direction and are **not yet available 
 
 ```mermaid
 flowchart LR
-  A[Android app] -->|HTTPS or private Wi-Fi| C[FastAPI on laptop]
-  B[macOS app or web client] -->|Local network| C
+  A[Flutter Android/macOS app] -->|Firebase Authentication| F[Firebase]
+  A -->|User-scoped reads and writes| E[(Cloud Firestore)]
+  B[Legacy web client] --> C[FastAPI]
   C --> D[(MongoDB)]
 ```
 
-The API server and MongoDB must be reachable while clients use the app. A mobile device on the same Wi-Fi network connects to the API server using the laptop's private IPv4 address.
+The Flutter app restores the Firebase sign-in session and loads its Firestore profile automatically when opened; it does not need a laptop server to be running. Firestore data is separated by Firebase user ID and protected by the deployed `firestore.rules`. The legacy web client still needs its FastAPI/MongoDB backend.
 
-## Run the Server
+Existing accounts and data in MongoDB are not automatically imported into Firebase. Users need Firebase accounts, and any old data must be migrated separately before it appears in the mobile app.
 
-From the repository root on Windows PowerShell:
+## Run the Legacy Web API
+
+These server instructions apply to the legacy web client only. The Flutter mobile app does not need this API. From the repository root on Windows PowerShell:
 
 ```powershell
 py -m venv .venv
@@ -58,18 +62,18 @@ py scripts/start_server.py
 
 Put your MongoDB connection string in `.env` as `MONGODB_URI`. The database name in the URI is used when present; otherwise the API uses `beluga`. Set `MONGODB_DATABASE` only when you want to override that choice. The tracked `.env.example` contains placeholders only; `.env` is ignored by Git. For MongoDB Atlas, use its connection string and ensure the API server's IP is allowed by the cluster's network access rules. For a local MongoDB server, a URI such as `mongodb://localhost:27017` works. The inspection command verifies the connection and creates the required indexes.
 
-The API is available at `http://<laptop-ip>:8000`; the mobile API base URL ends in `/api`. To find the laptop's address, run `ipconfig`. Connect the phone and laptop to the same private Wi-Fi, then set the APK's **Server Settings** to a URL such as `http://192.168.1.20:8000/api`. Allow Python through Windows Firewall on private networks if prompted. Existing data in the old SQLite file is not migrated automatically; the app now reads and writes MongoDB.
+The API is available at `http://<laptop-ip>:8000`. Configure the web client to use its URL ending in `/api` and allow Python through Windows Firewall on private networks if prompted.
 
-Firebase Hosting serves the files in `web/`. It hosts the frontend only; it does not run the FastAPI/MongoDB backend. For a separate API host, set the `beluga-api-base` meta tag in `web/index.html` to the API URL ending in `/api`, and add the web origin to the server's `ALLOWED_ORIGINS` setting.
+Firebase Hosting serves the files in `web/`; it hosts the frontend only, not the FastAPI/MongoDB backend. For a separate API host, set the `beluga-api-base` meta tag in `web/index.html` to the API URL ending in `/api`, and add the web origin to the server's `ALLOWED_ORIGINS` setting.
 
-For Google sign-in, configure a Google OAuth **Web client ID** in Google Cloud. Set the same value in `GOOGLE_CLIENT_ID` on the laptop server and `GOOGLE_SERVER_CLIENT_ID` in the mobile build. On Windows PowerShell, set the server value before launching it:
+For Google sign-in in the legacy web client, configure a Google OAuth **Web client ID** in Google Cloud and set it in `GOOGLE_CLIENT_ID` on the laptop server. Mobile Google sign-in instead requires enabling Google in Firebase Authentication and configuring the client ID for the build. On Windows PowerShell, set the web server value before launching it:
 
 ```powershell
 $env:GOOGLE_CLIENT_ID = "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com"
 py scripts/start_server.py
 ```
 
-Also register the Android package name and signing certificate in Google Cloud. Google sign-in is hidden when the APK is built without a client ID. Email OTP delivery is not configured; users can use Google sign-in or email/password.
+Email OTP delivery is not configured; mobile users can use email/password.
 
 ## Get the Android APK
 
@@ -80,18 +84,17 @@ To build locally with Flutter:
 ```powershell
 cd mobile
 py bootstrap.py
-flutter build apk --release --dart-define=API_BASE_URL=http://192.168.1.20:8000/api
+flutter build apk --release
 ```
 
-To enable Google sign-in, also pass `--dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID`. The APK is written to `mobile/build/app/outputs/flutter-apk/app-release.apk`. Replace the example IP with the server laptop's address.
+To enable Google sign-in, also pass `--dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID`. The APK is written to `mobile/build/app/outputs/flutter-apk/app-release.apk`.
 
 ### Publish a GitHub release
 
 Before publishing, configure **Settings > Secrets and variables > Actions**:
 
-- `API_BASE_URL` variable: a stable HTTPS API URL ending in `/api`.
 - `ANDROID_DEBUG_KEYSTORE_BASE64` secret: base64-encoded persistent Android signing keystore. Never commit the keystore or secret.
-- `GOOGLE_CLIENT_ID` variable (optional): Google OAuth Web client ID. Set the same ID as `GOOGLE_CLIENT_ID` on the laptop server to enable Google sign-in in the APK.
+- `GOOGLE_CLIENT_ID` variable (optional): OAuth client ID used to enable Google sign-in in the APK. Google must also be enabled in Firebase Authentication.
 
 You can publish in either of these ways:
 
@@ -113,13 +116,13 @@ An APK only runs on Android. To build the separate macOS app, use a Mac with Flu
 ```sh
 cd mobile
 python3 bootstrap.py
-flutter build macos --release --dart-define=API_BASE_URL=http://127.0.0.1:8000/api --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID
+flutter build macos --release --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID
 ```
 
-The `127.0.0.1` address is suitable when the API server is running on that same Mac. macOS packaging and signing are not part of the current GitHub release workflow.
+macOS packaging and signing are not part of the current GitHub release workflow.
 
 ## Remote Access and Data Safety
 
-For access outside the laptop's private Wi-Fi, use a stable HTTPS endpoint or a carefully configured tunnel; do not open or forward port `8000` on the router. The server and tunnel must remain online. Network reachability does not make this prototype production-ready.
+The mobile app connects directly to Firebase, so the laptop and API server do not need to be online. Firebase Authentication and Firestore rules scope access to each user's own documents. The legacy web/API still requires its server and database to be reachable.
 
-The administrator can view user profiles, health measurements, reminders, and patient records. Grant administrator access only to a trusted person. The project still needs an independent security and privacy review, account recovery, abuse protection, encrypted backups, and operational monitoring before real health data or public users are appropriate.
+Firebase users created by the mobile app cannot view other users' data, and there is no mobile administrator view. This prototype still needs an independent security and privacy review, account recovery, abuse protection, encrypted backups, and operational monitoring before real health data or public users are appropriate.

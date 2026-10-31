@@ -1,6 +1,17 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Data model: users/{uid} stores name, email, is_admin, and created_at.
+    // Private subcollections are scoped to that UID:
+    // profile/current stores bounded profile fields and a base64 profile image;
+    // medicines stores prescription maps; measurements stores bounded numeric
+    // health readings and a server timestamp; reminders stores title, time,
+    // active state, completion date, and creation time; prescription_completions
+    // stores prescription ID, intake time, completion date, and creation time;
+    // patients stores bounded patient details and lists; patients/{id}/visits
+    // stores bounded visit details. The profile, patient, and visit documents
+    // contain private health data and are readable only by their owner.
+
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -35,7 +46,7 @@ service cloud.firestore {
           data[field] >= minimum && data[field] <= maximum);
     }
 
-    function validStringList(data, field, maxItems) {
+    function validList(data, field, maxItems) {
       return data[field] is list && data[field].size() <= maxItems;
     }
 
@@ -79,8 +90,8 @@ service cloud.firestore {
         validOptionalNumber(data, 'weight_kg', 2, 400) &&
         validOptionalNumber(data, 'bmi', 0, 100) &&
         validString(data, 'location', 120) &&
-        validStringList(data, 'conditions', 30) &&
-        validStringList(data, 'medications', 50) &&
+        validList(data, 'conditions', 30) &&
+        validList(data, 'medications', 50) &&
         validString(data, 'appetite', 500) &&
         validString(data, 'daily_routine', 2000) &&
         validString(data, 'family_history', 2000) &&
@@ -122,6 +133,10 @@ service cloud.firestore {
         validOptionalNumber(data, 'fasting_glucose', 20, 1000) &&
         validOptionalNumber(data, 'systolic_bp', 50, 300) &&
         validOptionalNumber(data, 'diastolic_bp', 30, 200) &&
+        data.keys().hasAny([
+          'steps', 'active_minutes', 'sleep_hours', 'fasting_glucose',
+          'systolic_bp', 'diastolic_bp'
+        ]) &&
         data.recorded_at is timestamp &&
         data.recorded_at == request.time;
     }
@@ -167,12 +182,13 @@ service cloud.firestore {
         validString(data, 'gender', 40) &&
         validString(data, 'phone', 30) &&
         validString(data, 'email', 254) &&
+        (data.email == '' || validEmail(data.email)) &&
         validString(data, 'blood_group', 10) &&
         validString(data, 'address', 255) &&
         validString(data, 'emergency_contact', 100) &&
-        validStringList(data, 'chronic_conditions', 50) &&
-        validStringList(data, 'allergies', 50) &&
-        validStringList(data, 'current_medications', 50) &&
+        validList(data, 'chronic_conditions', 50) &&
+        validList(data, 'allergies', 50) &&
+        validList(data, 'current_medications', 50) &&
         validString(data, 'notes', 1500) &&
         data.created_at is timestamp &&
         data.updated_at is timestamp &&

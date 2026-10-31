@@ -40,17 +40,12 @@ jobs:
 
       - name: Validate release configuration
         env:
-          API_BASE_URL: ${{ vars.API_BASE_URL }}
           ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           RELEASE_TAG="${RELEASE_TAG:-$GITHUB_REF_NAME}"
           if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
             echo "Use a version tag such as v1.0.0."
-            exit 1
-          fi
-          if [[ ! "$API_BASE_URL" =~ ^https://.+/api$ ]]; then
-            echo "Set the API_BASE_URL Actions variable to your deployed HTTPS API URL ending in /api."
             exit 1
           fi
           if [[ -z "$ANDROID_DEBUG_KEYSTORE_BASE64" ]]; then
@@ -72,11 +67,9 @@ jobs:
       - name: Build release APK
         working-directory: mobile
         env:
-          API_BASE_URL: ${{ vars.API_BASE_URL }}
           GOOGLE_SERVER_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
         run: >-
           flutter build apk --release
-          --dart-define=API_BASE_URL="$API_BASE_URL"
           --dart-define=GOOGLE_SERVER_CLIENT_ID="$GOOGLE_SERVER_CLIENT_ID"
 
       - name: Publish GitHub release
