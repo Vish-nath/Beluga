@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 480" fill="none">
+  <defs>
+    <linearGradient id="panel" x1="118" y1="75" x2="477" y2="402" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#142a3a" stop-opacity=".92"/>
+      <stop offset="1" stop-color="#09131f" stop-opacity=".82"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="179" y1="134" x2="489" y2="336" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#59e1ef"/>
+      <stop offset="1" stop-color="#39bba9"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="421" y1="85" x2="534" y2="195" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#aa91ff"/>
+      <stop offset="1" stop-color="#6f65d9"/>
+    </linearGradient>
+    <linearGradient id="line" x1="168" y1="300" x2="414" y2="300" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#28c7c2"/>
+      <stop offset="1" stop-color="#72e1eb"/>
+    </linearGradient>
+    <filter id="shadow" x="40" y="32" width="552" height="416" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" result="hardAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"/>
+      <feOffset dy="18"/>
+      <feGaussianBlur stdDeviation="22"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix values="0 0 0 0 0.01 0 0 0 0 0.04 0 0 0 0 0.08 0 0 0 0.55 0"/>
+      <feBlend in2="BackgroundImageFix" result="effect1_dropShadow"/>
+      <feBlend in="SourceGraphic" in2="effect1_dropShadow" result="shape"/>
+    </filter>
+    <filter id="glow" x="107" y="74" width="430" height="350" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <circle cx="344" cy="238" r="161" fill="#27c7c8" fill-opacity=".15" filter="url(#glow)"/>
+  <circle cx="307" cy="240" r="176" stroke="#a2edec" stroke-opacity=".16" stroke-dasharray="3 10"/>
+  <circle cx="307" cy="240" r="211" stroke="#a2edec" stroke-opacity=".10" stroke-dasharray="2 13"/>
+
+  <g filter="url(#shadow)">
+    <rect x="104" y="78" width="398" height="306" rx="26" fill="url(#panel)" stroke="#d4f7f5" stroke-opacity=".23"/>
+    <path d="M104 104c0-14.36 11.64-26 26-26h346c14.36 0 26 11.64 26 26v34H104v-34Z" fill="#fff" fill-opacity=".035"/>
+    <circle cx="130" cy="109" r="4" fill="#71dfdc"/>
+    <circle cx="145" cy="109" r="4" fill="#fff" fill-opacity=".38"/>
+    <circle cx="160" cy="109" r="4" fill="#fff" fill-opacity=".2"/>
+    <text x="182" y="114" fill="#c5d7e2" font-family="Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="1.8">HEALTH OVERVIEW</text>
+
+    <rect x="130" y="160" width="152" height="88" rx="16" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".09"/>
+    <text x="148" y="184" fill="#8ca6b5" font-family="Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="1.2">TODAY'S CHECK-IN</text>
+    <path d="M149 213h18l8-14 11 29 11-19 7 4h35" stroke="url(#cyan)" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+    <circle cx="239" cy="213" r="4" fill="#6de1e8"/>
+
+    <rect x="299" y="160" width="176" height="88" rx="16" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".09"/>
+    <text x="317" y="184" fill="#8ca6b5" font-family="Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="1.2">DAILY ROUTINE</text>
+    <circle cx="327" cy="211" r="10" fill="#54d1c1" fill-opacity=".16"/>
+    <path d="m323 211 3 3 6-7" stroke="#67e0cf" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+    <rect x="346" y="207" width="99" height="6" rx="3" fill="#fff" fill-opacity=".23"/>
+    <rect x="346" y="219" width="69" height="4" rx="2" fill="#fff" fill-opacity=".10"/>
+
+    <rect x="130" y="266" width="344" height="88" rx="16" fill="#fff" fill-opacity=".035" stroke="#fff" stroke-opacity=".08"/>
+    <text x="148" y="290" fill="#8ca6b5" font-family="Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="1.2">WEEKLY WELLNESS</text>
+    <path d="M151 332c19-5 27-15 42-14 13 1 18 11 32 8 17-3 23-28 39-25 14 2 18 20 32 20 14 0 21-15 36-13 14 1 20 15 35 13 13-2 20-14 36-18 13-4 20 0 31 3" stroke="url(#line)" stroke-linecap="round" stroke-width="3"/>
+    <path d="M151 332c19-5 27-15 42-14 13 1 18 11 32 8 17-3 23-28 39-25 14 2 18 20 32 20 14 0 21-15 36-13 14 1 20 15 35 13 13-2 20-14 36-18 13-4 20 0 31 3v28H151v-2Z" fill="url(#line)" fill-opacity=".09"/>
+  </g>
+
+  <g>
+    <rect x="411" y="54" width="119" height="59" rx="18" fill="#15263b" fill-opacity=".92" stroke="#fff" stroke-opacity=".18"/>
+    <circle cx="439" cy="83" r="13" fill="url(#violet)" fill-opacity=".24"/>
+    <path d="M439 76v14m-7-7h14" stroke="#c4b8ff" stroke-linecap="round" stroke-width="2"/>
+    <text x="460" y="80" fill="#d5e3ed" font-family="Arial,sans-serif" font-size="10" font-weight="700">CARE NOTES</text>
+    <text x="460" y="94" fill="#8299aa" font-family="Arial,sans-serif" font-size="8">all in one place</text>
+  </g>
+
+  <g>
+    <rect x="65" y="315" width="128" height="66" rx="18" fill="#14283a" fill-opacity=".94" stroke="#d4f7f5" stroke-opacity=".18"/>
+    <circle cx="91" cy="348" r="13" fill="#56d7c5" fill-opacity=".17"/>
+    <path d="M91 338v20m-10-10h20" stroke="#6ce0cf" stroke-linecap="round" stroke-width="2"/>
+    <text x="113" y="346" fill="#d5e3ed" font-family="Arial,sans-serif" font-size="10" font-weight="700">A calmer routine</text>
+    <text x="113" y="360" fill="#8299aa" font-family="Arial,sans-serif" font-size="8">small steps, together</text>
+  </g>
+
+  <circle cx="526" cy="307" r="5" fill="#8e86ff"/>
+  <circle cx="81" cy="152" r="4" fill="#70e1de"/>
+  <circle cx="505" cy="405" r="3" fill="#70e1de" fill-opacity=".8"/>
+</svg>

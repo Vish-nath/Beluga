@@ -48,3 +48,17 @@ data/*.sqlite3
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
