@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -9,6 +11,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
+import 'firebase_data.dart' show HealthApi;
+import 'firebase_options.dart';
 import 'reminder_notifications.dart';
 
 const defaultApiBaseUrl = String.fromEnvironment(
@@ -27,8 +31,26 @@ String get platformDefaultApiBaseUrl {
 
 const secureStorage = FlutterSecureStorage();
 
-class HealthApi {
-  HealthApi(this.token, {this.baseUrl});
+void showFirebaseCloudInfo(BuildContext context) {
+  showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Firebase cloud data'),
+      content: const Text(
+        'Beluga signs in with Firebase Authentication and stores your account data in your private Firestore space. Cloud data loads automatically when you open the app.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
+
+class LegacyHealthApi {
+  LegacyHealthApi(this.token, {this.baseUrl});
 
   final String? token;
   final String? baseUrl;
@@ -113,6 +135,9 @@ class HealthApi {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   await ReminderNotifications.initialize();
   runApp(const BelugaApp());
 }
@@ -127,7 +152,7 @@ class BelugaApp extends StatefulWidget {
 class _BelugaAppState extends State<BelugaApp> {
   String? _token;
   Map<String, dynamic>? _user;
-  String _baseUrl = platformDefaultApiBaseUrl;
+  final String _baseUrl = 'Firebase Firestore · Mumbai';
   bool _checkingSession = true;
 
   @override
@@ -137,31 +162,28 @@ class _BelugaAppState extends State<BelugaApp> {
   }
 
   Future<void> _loadConfigAndRestoreSession() async {
-    final savedUrl = await secureStorage.read(key: 'custom_api_base_url');
-    if (savedUrl != null && savedUrl.trim().isNotEmpty) {
-      _baseUrl = savedUrl.trim();
-    }
-    final token = await secureStorage.read(key: 'access_token');
-    if (token != null) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _token = user.uid;
+      _user = {
+        'id': user.uid,
+        'name': user.displayName ?? '',
+        'email': user.email ?? '',
+        'is_admin': false,
+      };
       try {
-        final result = await HealthApi(token, baseUrl: _baseUrl).request('/me');
-        _token = token;
+        final result = await HealthApi(user.uid).request('/me');
         _user = Map<String, dynamic>.from(result['user']);
       } catch (_) {
-        await secureStorage.delete(key: 'access_token');
+        // Keep the Firebase session so the app can retry when connectivity returns.
       }
     }
     if (mounted) setState(() => _checkingSession = false);
   }
 
-  Future<void> _updateBaseUrl(String newUrl) async {
-    await secureStorage.write(key: 'custom_api_base_url', value: newUrl.trim());
-    setState(() => _baseUrl = newUrl.trim());
-  }
+  void _updateBaseUrl(String _) {}
 
   Future<void> _acceptSession(Map<String, dynamic> result) async {
-    await secureStorage.write(
-        key: 'access_token', value: result['access_token']);
     setState(() {
       _token = result['access_token'];
       _user = Map<String, dynamic>.from(result['user']);
@@ -169,11 +191,7 @@ class _BelugaAppState extends State<BelugaApp> {
   }
 
   Future<void> _signOut() async {
-    try {
-      await HealthApi(_token, baseUrl: _baseUrl)
-          .request('/logout', method: 'POST');
-    } catch (_) {}
-    await secureStorage.delete(key: 'access_token');
+    await FirebaseAuth.instance.signOut();
     if (mounted) {
       setState(() {
         _token = null;
@@ -513,13 +531,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _openServerConfig() {
-    showDialog(
-      context: context,
-      builder: (context) => ServerConfigDialog(
-        currentUrl: widget.baseUrl,
-        onSave: widget.onUpdateBaseUrl,
-      ),
-    );
+    showFirebaseCloudInfo(context);
   }
 
   @override
@@ -559,7 +571,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             IconButton(
                               icon:
                                   const Icon(Icons.settings_outlined, size: 20),
-                              tooltip: 'Configure Server Address',
+                              tooltip: 'Firebase cloud data',
                               onPressed: _openServerConfig,
                             ),
                           ],
@@ -755,12 +767,12 @@ class _AuthScreenState extends State<AuthScreen> {
                               mainAxisSize: MainAxisSize.min,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Icons.wifi_outlined,
+                                const Icon(Icons.cloud_done_outlined,
                                     size: 14, color: Color(0xff176b55)),
                                 const SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
-                                    'Server: ${widget.baseUrl}',
+                                    'Cloud storage: ${widget.baseUrl}',
                                     style: const TextStyle(
                                         fontSize: 11, color: Color(0xff176b55)),
                                     overflow: TextOverflow.ellipsis,
@@ -3079,13 +3091,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _openServerConfig() {
-    showDialog(
-      context: context,
-      builder: (context) => ServerConfigDialog(
-        currentUrl: widget.baseUrl,
-        onSave: widget.onUpdateBaseUrl,
-      ),
-    );
+    showFirebaseCloudInfo(context);
   }
 
   @override
@@ -3407,14 +3413,14 @@ class _ProfileFormState extends State<ProfileForm> {
                   style: Theme.of(context).textTheme.headlineSmall),
               OutlinedButton.icon(
                 onPressed: widget.onOpenServerConfig,
-                icon: const Icon(Icons.dns, size: 16),
-                label: const Text('Server Settings'),
+                icon: const Icon(Icons.cloud_outlined, size: 16),
+                label: const Text('Cloud Storage'),
               ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            'Connected to: ${widget.baseUrl}',
+            'Data is stored in Firebase Firestore.',
             style: const TextStyle(fontSize: 12, color: Colors.black54),
           ),
           const SizedBox(height: 14),
