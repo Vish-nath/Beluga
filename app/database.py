@@ -43,28 +43,33 @@ def connect_db() -> Iterator[Database]:
 
 
 def initialize_database() -> None:
-    client = get_client()
-    client.admin.command("ping")
-    database = get_database()
-    database.users.create_index("email", unique=True)
-    database.profiles.create_index("user_id", unique=True)
-    database.sessions.create_index("token_hash", unique=True)
-    # TTL index: MongoDB automatically removes expired sessions after they expire
-    database.sessions.create_index("expires_at", expireAfterSeconds=0)
-    database.measurements.create_index([("user_id", 1), ("recorded_at", -1)])
-    database.reminders.create_index([("user_id", 1), ("active", 1), ("scheduled_time", 1)])
-    database.dataset_summary.create_index("id", unique=True)
-    database.patients.create_index("patient_id", unique=True)
-    database.patients.create_index([("user_id", 1), ("updated_at", -1)])
-    database.patient_visits.create_index([("patient_id", 1), ("visit_date", -1), ("id", -1)])
-    database.admin_access_log.create_index([("admin_user_id", 1), ("accessed_at", -1)])
-    database.reminder_completions.create_index(
-        [("reminder_id", 1), ("completed_on", 1)], unique=True
-    )
-    database.prescription_completions.create_index(
-        [("user_id", 1), ("prescription_id", 1), ("scheduled_time", 1), ("completed_on", 1)],
-        unique=True,
-    )
+    if not MONGODB_URI:
+        return
+    try:
+        client = get_client()
+        client.admin.command("ping")
+        database = get_database()
+        database.users.create_index("email", unique=True)
+        database.profiles.create_index("user_id", unique=True)
+        database.sessions.create_index("token_hash", unique=True)
+        # TTL index: MongoDB automatically removes expired sessions after they expire
+        database.sessions.create_index("expires_at", expireAfterSeconds=0)
+        database.measurements.create_index([("user_id", 1), ("recorded_at", -1)])
+        database.reminders.create_index([("user_id", 1), ("active", 1), ("scheduled_time", 1)])
+        database.dataset_summary.create_index("id", unique=True)
+        database.patients.create_index("patient_id", unique=True)
+        database.patients.create_index([("user_id", 1), ("updated_at", -1)])
+        database.patient_visits.create_index([("patient_id", 1), ("visit_date", -1), ("id", -1)])
+        database.admin_access_log.create_index([("admin_user_id", 1), ("accessed_at", -1)])
+        database.reminder_completions.create_index(
+            [("reminder_id", 1), ("completed_on", 1)], unique=True
+        )
+        database.prescription_completions.create_index(
+            [("user_id", 1), ("prescription_id", 1), ("scheduled_time", 1), ("completed_on", 1)],
+            unique=True,
+        )
+    except Exception:
+        pass
 
 
 def next_id(database: Database, collection: str) -> int:
