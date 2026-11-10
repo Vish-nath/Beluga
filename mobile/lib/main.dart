@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -404,6 +405,7 @@ class _HealthHomeState extends State<HealthHome> {
     };
 
     return Scaffold(
+      extendBody: true,
       appBar: AppBar(
         title: Text(_tabs[_selected], style: const TextStyle(fontWeight: FontWeight.bold)),
         actions: [
@@ -413,14 +415,20 @@ class _HealthHomeState extends State<HealthHome> {
       body: Row(
         children: [
           if (wide)
-            NavigationRail(
-              selectedIndex: _selected,
-              onDestinationSelected: (v) => setState(() => _selected = v),
-              labelType: NavigationRailLabelType.all,
-              destinations: [
-                for (var i = 0; i < _tabs.length; i++)
-                  NavigationRailDestination(icon: Icon(_icons[i]), label: Text(_tabs[i])),
-              ],
+            ClipRRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                child: NavigationRail(
+                  backgroundColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.7),
+                  selectedIndex: _selected,
+                  onDestinationSelected: (v) => setState(() => _selected = v),
+                  labelType: NavigationRailLabelType.all,
+                  destinations: [
+                    for (var i = 0; i < _tabs.length; i++)
+                      NavigationRailDestination(icon: Icon(_icons[i]), label: Text(_tabs[i])),
+                  ],
+                ),
+              ),
             ),
           Expanded(
             child: AnimatedSwitcher(
@@ -440,13 +448,19 @@ class _HealthHomeState extends State<HealthHome> {
       ),
       bottomNavigationBar: wide
           ? null
-          : NavigationBar(
-              selectedIndex: _selected,
-              onDestinationSelected: (v) => setState(() => _selected = v),
-              destinations: [
-                for (var i = 0; i < _tabs.length; i++)
-                  NavigationDestination(icon: Icon(_icons[i]), label: _tabs[i]),
-              ],
+          : ClipRRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                child: NavigationBar(
+                  backgroundColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.7),
+                  selectedIndex: _selected,
+                  onDestinationSelected: (v) => setState(() => _selected = v),
+                  destinations: [
+                    for (var i = 0; i < _tabs.length; i++)
+                      NavigationDestination(icon: Icon(_icons[i]), label: _tabs[i]),
+                  ],
+                ),
+              ),
             ),
     );
   }

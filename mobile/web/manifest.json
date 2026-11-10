@@ -1,12 +1,12 @@
 {
-    "name": "beluga_health",
-    "short_name": "beluga_health",
+    "name": "Beluga Health",
+    "short_name": "Beluga",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#176b55",
+    "theme_color": "#176b55",
+    "description": "Offline nursing assistant – meal, medication & checkup reminders.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {
