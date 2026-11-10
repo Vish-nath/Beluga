@@ -165,9 +165,16 @@ class ReminderNotifications {
             importance: Importance.high,
             priority: Priority.high,
             visibility: NotificationVisibility.private,
+            sound: RawResourceAndroidNotificationSound('bell_ring'),
           ),
-          iOS: const DarwinNotificationDetails(categoryIdentifier: 'health_reminder'),
-          macOS: const DarwinNotificationDetails(categoryIdentifier: 'health_reminder'),
+          iOS: const DarwinNotificationDetails(
+            categoryIdentifier: 'health_reminder',
+            sound: 'bell_ring.wav',
+          ),
+          macOS: const DarwinNotificationDetails(
+            categoryIdentifier: 'health_reminder',
+            sound: 'bell_ring.wav',
+          ),
         ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         payload: jsonEncode({'kind': 'appointment', 'id': id}),
@@ -208,6 +215,7 @@ class ReminderNotifications {
           importance: Importance.high,
           priority: Priority.high,
           visibility: NotificationVisibility.private,
+          sound: RawResourceAndroidNotificationSound('bell_ring'),
           actions: [
             AndroidNotificationAction(
               'mark_complete',
@@ -216,8 +224,14 @@ class ReminderNotifications {
             ),
           ],
         ),
-        iOS: const DarwinNotificationDetails(categoryIdentifier: 'health_reminder'),
-        macOS: const DarwinNotificationDetails(categoryIdentifier: 'health_reminder'),
+        iOS: const DarwinNotificationDetails(
+          categoryIdentifier: 'health_reminder',
+          sound: 'bell_ring.wav',
+        ),
+        macOS: const DarwinNotificationDetails(
+          categoryIdentifier: 'health_reminder',
+          sound: 'bell_ring.wav',
+        ),
       ),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
