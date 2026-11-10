@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
@@ -55,49 +56,121 @@ class ReminderNotifications {
     return null;
   }
 
-  static Future<void> sync({
-    required List<Map<String, dynamic>> prescriptions,
-    required List<Map<String, dynamic>> reminders,
+  /// Schedule all notifications from local data.
+  static Future<void> syncFromLocal({
+    required List<Map<String, dynamic>> meals,
+    required List<Map<String, dynamic>> medications,
+    required List<Map<String, dynamic>> appointments,
   }) async {
     if (!_initialized) return;
     await _plugin.cancelAll();
 
-    for (final prescription in prescriptions) {
-      final id = prescription['id']?.toString();
-      final name = prescription['name']?.toString() ?? 'Prescribed medicine';
-      if (id == null || id.isEmpty) continue;
-      final times = (prescription['intake_times'] as List? ?? []).cast<String>();
-      final details = [
-        if ((prescription['prescribed_dose'] ?? '').toString().isNotEmpty)
-          prescription['prescribed_dose'].toString(),
-        if ((prescription['quantity'] ?? '').toString().isNotEmpty)
-          'Quantity: ${prescription['quantity']}',
-        if ((prescription['instructions'] ?? '').toString().isNotEmpty)
-          prescription['instructions'].toString(),
-      ].join(' · ');
-      for (final time in times) {
-        await _scheduleDaily(
-          key: 'prescription:$id:$time',
-          title: 'Prescription reminder: $name',
-          body: details.isEmpty ? 'Follow the instructions provided by your doctor.' : details,
-          time: time,
-          actionLabel: 'Taken',
-          payload: jsonEncode({'kind': 'prescription', 'id': id, 'time': time}),
-        );
-      }
-    }
+    // Schedule meal reminders
+    for (final meal in meals) {
+      final id = meal['id'];
+      final name = meal['meal_name']?.toString() ?? 'Meal';
+      final time = meal['scheduled_time']?.toString() ?? '';
+      if (id == null || time.isEmpty) continue;
 
-    for (final reminder in reminders) {
-      final id = reminder['id'];
-      final time = reminder['scheduled_time']?.toString();
-      if (id == null || time == null) continue;
       await _scheduleDaily(
-        key: 'reminder:$id',
-        title: reminder['title']?.toString() ?? 'Health reminder',
-        body: reminder['instruction']?.toString() ?? '',
+        key: 'meal:$id',
+        title: '🍽️ Meal time: $name',
+        body: 'Time to have your $name.',
         time: time,
         actionLabel: 'Done',
-        payload: jsonEncode({'kind': 'reminder', 'id': id}),
+        payload: jsonEncode({'kind': 'meal', 'id': id, 'name': name}),
+      );
+    }
+
+    // Schedule medication reminders (before / after meal / custom time)
+    for (final med in medications) {
+      final id = med['id'];
+      final name = med['name']?.toString() ?? 'Medicine';
+      final time = med['scheduled_time']?.toString() ?? '';
+      final timing = med['timing']?.toString() ?? 'before_meal';
+      final dose = med['prescribed_dose']?.toString() ?? '';
+      final instructions = med['instructions']?.toString() ?? '';
+      if (id == null || time.isEmpty) continue;
+
+      String timingLabel;
+      switch (timing) {
+        case 'before_meal':
+          timingLabel = 'before your meal';
+          break;
+        case 'after_meal':
+          timingLabel = 'after your meal';
+          break;
+        default:
+          timingLabel = 'as scheduled';
+      }
+
+      final body = [
+        if (dose.isNotEmpty) dose,
+        timingLabel,
+        if (instructions.isNotEmpty) instructions,
+      ].join(' · ');
+
+      await _scheduleDaily(
+        key: 'medication:$id',
+        title: '💊 Take medication: $name',
+        body: body.isEmpty ? 'Follow the instructions provided by your doctor.' : body,
+        time: time,
+        actionLabel: 'Taken',
+        payload: jsonEncode({'kind': 'medication', 'id': id, 'name': name, 'time': time}),
+      );
+    }
+
+    // Schedule doctor appointment reminders (one-time, morning of the day)
+    for (final appt in appointments) {
+      final id = appt['id'];
+      final doctor = appt['doctor_name']?.toString() ?? 'Doctor';
+      final date = appt['appointment_date']?.toString() ?? '';
+      final time = appt['appointment_time']?.toString() ?? '09:00';
+      if (id == null || date.isEmpty) continue;
+
+      final appointmentDate = DateTime.tryParse(date);
+      if (appointmentDate == null) continue;
+      final now = DateTime.now();
+      if (appointmentDate.isBefore(DateTime(now.year, now.month, now.day))) continue;
+
+      // Remind 1 hour before appointment
+      final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(time);
+      if (match == null) continue;
+      var hour = int.parse(match.group(1)!);
+      final minute = int.parse(match.group(2)!);
+      // 1 hour before
+      final reminderHour = hour > 0 ? hour - 1 : 0;
+
+      final scheduledDate = timezone.TZDateTime(
+        timezone.local,
+        appointmentDate.year,
+        appointmentDate.month,
+        appointmentDate.day,
+        reminderHour,
+        minute,
+      );
+
+      if (scheduledDate.isBefore(timezone.TZDateTime.now(timezone.local))) continue;
+
+      await _plugin.zonedSchedule(
+        _notificationId('appointment:$id'),
+        '🩺 Doctor appointment in 1 hour',
+        'Visit $doctor at $time',
+        scheduledDate,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'beluga_appointments',
+            'Appointments',
+            channelDescription: 'Doctor appointment reminders',
+            importance: Importance.high,
+            priority: Priority.high,
+            visibility: NotificationVisibility.private,
+          ),
+          iOS: const DarwinNotificationDetails(categoryIdentifier: 'health_reminder'),
+          macOS: const DarwinNotificationDetails(categoryIdentifier: 'health_reminder'),
+        ),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: jsonEncode({'kind': 'appointment', 'id': id}),
       );
     }
   }
