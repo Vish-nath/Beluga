@@ -320,18 +320,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _importData() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
-      if (result == null || result.files.isEmpty) return;
-      final String content;
-      if (kIsWeb) {
-        final bytes = result.files.single.bytes;
-        if (bytes == null) return;
-        content = utf8.decode(bytes);
-      } else {
-        final path = result.files.single.path;
-        if (path == null) return;
-        content = await XFile(path).readAsString();
-      }
+      final file = await FilePicker.pickFile(type: FileType.any);
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      final content = utf8.decode(bytes);
       await LocalDatabase.instance.importAllData(content);
       await _syncNotifications();
       widget.onComplete();
@@ -902,8 +894,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _importData(BuildContext ctx) async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
-      if (result == null || result.files.isEmpty) return;
+      final file = await FilePicker.pickFile(type: FileType.any);
+      if (file == null) return;
       final confirmed = await showDialog<bool>(
         context: ctx,
         builder: (ctx) => AlertDialog(
@@ -916,16 +908,8 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       );
       if (confirmed != true) return;
-      final String content;
-      if (kIsWeb) {
-        final bytes = result.files.single.bytes;
-        if (bytes == null) return;
-        content = utf8.decode(bytes);
-      } else {
-        final path = result.files.single.path;
-        if (path == null) return;
-        content = await XFile(path).readAsString();
-      }
+      final bytes = await file.readAsBytes();
+      final content = utf8.decode(bytes);
       await _db.importAllData(content);
       await _syncNotifications();
       _load();
