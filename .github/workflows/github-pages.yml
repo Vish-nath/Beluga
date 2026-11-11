@@ -31,9 +31,18 @@ jobs:
         working-directory: ./mobile
         run: flutter pub get
 
-      - name: Build Web
+      - name: Setup Web DB Workers
         working-directory: ./mobile
-        run: flutter build web --base-href "/Beluga/" --release
+        run: dart run sqflite_common_ffi_web:setup
+
+      - name: Build Web App
+        working-directory: ./mobile
+        run: flutter build web --base-href "/Beluga/app/" --release
+
+      - name: Copy Build Artifacts to app folder
+        run: |
+          mkdir -p app
+          cp -r mobile/build/web/* app/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -41,7 +50,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './mobile/build/web'
+          path: '.'
 
   deploy:
     environment:
