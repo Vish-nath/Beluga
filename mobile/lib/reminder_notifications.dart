@@ -16,6 +16,7 @@ class ReminderNotifications {
   static bool _initialized = false;
 
   static Future<void> initialize() async {
+    if (kIsWeb) return;
     if (_initialized) return;
     timezone_data.initializeTimeZones();
     final localTimezone = await FlutterTimezone.getLocalTimezone();
@@ -43,6 +44,7 @@ class ReminderNotifications {
   }
 
   static Future<bool?> requestPermission() async {
+    if (kIsWeb) return null;
     if (defaultTargetPlatform == TargetPlatform.android) {
       return _plugin
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
@@ -62,7 +64,7 @@ class ReminderNotifications {
     required List<Map<String, dynamic>> medications,
     required List<Map<String, dynamic>> appointments,
   }) async {
-    if (!_initialized) return;
+    if (kIsWeb || !_initialized) return;
     await _plugin.cancelAll();
 
     // Schedule meal reminders

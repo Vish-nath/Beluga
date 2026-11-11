@@ -1,10 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
 /// Singleton offline database for Beluga Health.
 /// All data lives locally – nothing is sent to a server.
@@ -21,13 +22,39 @@ class LocalDatabase {
   }
 
   Future<Database> _open() async {
-    final dbPath = await getDatabasesPath();
-    final path = p.join(dbPath, 'beluga_health.db');
-    return openDatabase(
-      path,
-      version: 1,
-      onCreate: _onCreate,
-    );
+    try {
+      if (kIsWeb) {
+        databaseFactory = databaseFactoryFfiWeb;
+      } else if (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.linux) {
+        sqfliteFfiInit();
+        databaseFactory = databaseFactoryFfi;
+      }
+
+      final String path;
+      if (kIsWeb) {
+        path = 'beluga_health.db';
+      } else {
+        final dbPath = await getDatabasesPath();
+        path = p.join(dbPath, 'beluga_health.db');
+      }
+
+      return await openDatabase(
+        path,
+        version: 1,
+        onCreate: _onCreate,
+      );
+    } catch (e) {
+      if (kDebugMode) print('Error opening database: $e');
+      if (kIsWeb) {
+        databaseFactory = databaseFactoryFfiWeb;
+        return await openDatabase(
+          inMemoryDatabasePath,
+          version: 1,
+          onCreate: _onCreate,
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
