@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
@@ -119,9 +118,14 @@ class _AppEntryState extends State<AppEntry> {
   }
 
   Future<void> _checkProfile() async {
-    final profile = await LocalDatabase.instance.getProfile();
-    final complete = LocalDatabase.instance.isProfileComplete(profile);
-    if (mounted) setState(() { _needsOnboarding = !complete; _loading = false; });
+    try {
+      final profile = await LocalDatabase.instance.getProfile();
+      final complete = LocalDatabase.instance.isProfileComplete(profile);
+      if (mounted) setState(() { _needsOnboarding = !complete; _loading = false; });
+    } catch (e) {
+      if (kDebugMode) print('Profile check error: $e');
+      if (mounted) setState(() { _needsOnboarding = true; _loading = false; });
+    }
   }
 
   @override
@@ -316,9 +320,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _importData() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any);
-      if (result == null || result.files.single.path == null) return;
-      final content = await File(result.files.single.path!).readAsString();
+      final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+      if (result == null || result.files.isEmpty) return;
+      final String content;
+      if (kIsWeb) {
+        final bytes = result.files.single.bytes;
+        if (bytes == null) return;
+        content = utf8.decode(bytes);
+      } else {
+        final path = result.files.single.path;
+        if (path == null) return;
+        content = await XFile(path).readAsString();
+      }
       await LocalDatabase.instance.importAllData(content);
       await _syncNotifications();
       widget.onComplete();
@@ -874,12 +887,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _exportData(BuildContext ctx) async {
     try {
       final json = await _db.exportAllData();
-      final dir = await getApplicationDocumentsDirectory();
       final date = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final file = File('${dir.path}/beluga_backup_$date.json');
-      await file.writeAsString(json);
+      final filename = 'beluga_backup_$date.json';
+      final bytes = Uint8List.fromList(utf8.encode(json));
       if (ctx.mounted) {
-        await Share.shareXFiles([XFile(file.path)], text: 'Beluga Health backup');
+        await Share.shareXFiles([
+          XFile.fromData(bytes, name: filename, mimeType: 'application/json'),
+        ], text: 'Beluga Health backup');
       }
     } catch (e) {
       if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Export failed: $e')));
@@ -888,8 +902,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _importData(BuildContext ctx) async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any);
-      if (result == null || result.files.single.path == null) return;
+      final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+      if (result == null || result.files.isEmpty) return;
       final confirmed = await showDialog<bool>(
         context: ctx,
         builder: (ctx) => AlertDialog(
@@ -902,7 +916,16 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       );
       if (confirmed != true) return;
-      final content = await File(result.files.single.path!).readAsString();
+      final String content;
+      if (kIsWeb) {
+        final bytes = result.files.single.bytes;
+        if (bytes == null) return;
+        content = utf8.decode(bytes);
+      } else {
+        final path = result.files.single.path;
+        if (path == null) return;
+        content = await XFile(path).readAsString();
+      }
       await _db.importAllData(content);
       await _syncNotifications();
       _load();
