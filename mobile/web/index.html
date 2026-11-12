@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <script>
+    window.flutterWebRenderer = "canvaskit";
+    window.flutterConfiguration = { canvasKitVariant: "full" };
+  </script>
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.
@@ -42,5 +46,19 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    fetch("cursor.html").then(r => r.text()).then(html => {
+       const div = document.createElement("div");
+       div.innerHTML = html;
+       document.body.appendChild(div);
+       // Evaluate scripts inside
+       Array.from(div.querySelectorAll("script")).forEach(oldScript => {
+         const newScript = document.createElement("script");
+         Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+         newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+         oldScript.parentNode.replaceChild(newScript, oldScript);
+       });
+    });
+  </script>
 </body>
 </html>

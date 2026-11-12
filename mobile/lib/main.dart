@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import 'local_database.dart';
+import 'mesh_background.dart';
 import 'reminder_notifications.dart';
 
 // ════════════════════════════════════════════════════════════
@@ -48,7 +49,12 @@ class _BelugaAppState extends State<BelugaApp> {
       themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
-      home: AppEntry(isDarkMode: _isDarkMode, onToggleTheme: _toggleTheme),
+      home: Stack(
+        children: [
+          MeshBackground(isDarkMode: _isDarkMode),
+          AppEntry(isDarkMode: _isDarkMode, onToggleTheme: _toggleTheme),
+        ],
+      ),
     );
   }
 
@@ -63,9 +69,9 @@ class _BelugaAppState extends State<BelugaApp> {
         brightness: brightness,
         primary: isDark ? const Color(0xff22a07d) : seed,
       ),
-      scaffoldBackgroundColor: isDark ? const Color(0xff121412) : const Color(0xfff5f5ef),
-      appBarTheme: AppBarTheme(
-        backgroundColor: isDark ? const Color(0xff121412) : const Color(0xfff5f5ef),
+      scaffoldBackgroundColor: Colors.transparent,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
       ),
@@ -424,7 +430,8 @@ class _HealthHomeState extends State<HealthHome> {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
                 child: NavigationRail(
-                  backgroundColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.7),
+                  backgroundColor: widget.isDarkMode ? Colors.black38 : Colors.white60,
+                  elevation: 0,
                   selectedIndex: _selected,
                   onDestinationSelected: (v) => setState(() => _selected = v),
                   labelType: NavigationRailLabelType.all,
@@ -457,7 +464,9 @@ class _HealthHomeState extends State<HealthHome> {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
                 child: NavigationBar(
-                  backgroundColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.7),
+                  backgroundColor: widget.isDarkMode ? Colors.black38 : Colors.white60,
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 0,
                   selectedIndex: _selected,
                   onDestinationSelected: (v) => setState(() => _selected = v),
                   destinations: [
@@ -1587,10 +1596,18 @@ class _AnimatedThemeSwitch extends StatelessWidget {
       onPressed: onToggle,
       tooltip: isDarkMode ? 'Light mode' : 'Dark mode',
       icon: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 350),
-        transitionBuilder: (child, animation) => RotationTransition(
-          turns: Tween<double>(begin: 0.5, end: 1.0).animate(animation),
-          child: ScaleTransition(scale: animation, child: child),
+        duration: const Duration(milliseconds: 400),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeInBack,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: RotationTransition(
+            turns: Tween<double>(begin: 0.25, end: 0.0).animate(animation),
+            child: ScaleTransition(
+              scale: animation,
+              child: child,
+            ),
+          ),
         ),
         child: Icon(
           isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,

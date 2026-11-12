@@ -1,0 +1,89 @@
+<style>
+  * { cursor: none !important; }
+  #fish-cursor {
+    position: fixed;
+    pointer-events: none;
+    z-index: 99999;
+    font-size: 32px;
+    transform-origin: center;
+    transition: transform 0.1s;
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.3));
+    user-select: none;
+  }
+  .ripple {
+    position: fixed;
+    border-radius: 50%;
+    background: rgba(0, 150, 255, 0.4);
+    transform: scale(0);
+    animation: ripple-anim 0.6s linear;
+    pointer-events: none;
+    z-index: 99998;
+  }
+  @keyframes ripple-anim {
+    to { transform: scale(4); opacity: 0; }
+  }
+  @keyframes backflip {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(-360deg); }
+  }
+  .flip { animation: backflip 0.5s ease-in-out; }
+  .hover-ripple {
+    position: fixed;
+    border-radius: 50%;
+    border: 2px solid rgba(0, 150, 255, 0.5);
+    transform: scale(0);
+    animation: hover-ripple-anim 1s linear;
+    pointer-events: none;
+    z-index: 99997;
+  }
+  @keyframes hover-ripple-anim {
+    to { transform: scale(3); opacity: 0; }
+  }
+</style>
+<div id="fish-cursor">🐟</div>
+<script>
+  const cursor = document.getElementById('fish-cursor');
+  let isHoveringButton = false;
+  let lastX = 0, lastY = 0;
+
+  function createWaterMovement(x, y, isHover) {
+    if (Math.random() > (isHover ? 0.3 : 0.8)) return;
+    const ripple = document.createElement('div');
+    ripple.className = isHover ? 'hover-ripple' : 'ripple';
+    ripple.style.left = (x - 10) + 'px';
+    ripple.style.top = (y - 10) + 'px';
+    ripple.style.width = '20px';
+    ripple.style.height = '20px';
+    document.body.appendChild(ripple);
+    setTimeout(() => ripple.remove(), isHover ? 1000 : 600);
+  }
+
+  document.addEventListener('mousemove', (e) => {
+    cursor.style.left = (e.clientX - 16) + 'px';
+    cursor.style.top = (e.clientY - 16) + 'px';
+
+    const dx = e.clientX - lastX;
+    if (dx !== 0) {
+       cursor.style.transform = `scaleX(${dx > 0 ? -1 : 1})`;
+    }
+
+    lastX = e.clientX;
+    lastY = e.clientY;
+
+    const hoverElement = document.elementFromPoint(e.clientX, e.clientY);
+    if (hoverElement) {
+       const style = window.getComputedStyle(hoverElement);
+       isHoveringButton = (style.cursor === 'pointer');
+    }
+
+    createWaterMovement(e.clientX, e.clientY, isHoveringButton);
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    cursor.classList.add('flip');
+    setTimeout(() => cursor.classList.remove('flip'), 500);
+    for(let i = 0; i < 3; i++) {
+       setTimeout(() => createWaterMovement(e.clientX, e.clientY, true), i * 100);
+    }
+  });
+</script>
