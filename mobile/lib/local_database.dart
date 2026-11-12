@@ -344,7 +344,17 @@ class LocalDatabase {
   }
 
   Future<void> importAllData(String jsonString) async {
-    final data = jsonDecode(jsonString) as Map<String, dynamic>;
+    final decoded = jsonDecode(jsonString);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid backup format: Not a JSON object.');
+    }
+    
+    // Version check to prevent importing incompatible future backups
+    final version = decoded['version'];
+    if (version != 1) {
+      throw FormatException('Unsupported backup version: $version');
+    }
+
     final db = await database;
 
     await db.transaction((txn) async {
@@ -355,9 +365,15 @@ class LocalDatabase {
 
       // Import each table
       for (final table in ['user_profile', 'meal_schedules', 'medications', 'doctor_appointments', 'calendar_events', 'health_log']) {
-        final rows = data[table] as List? ?? [];
-        for (final row in rows) {
-          await txn.insert(table, Map<String, dynamic>.from(row as Map));
+        final rows = decoded[table];
+        if (rows is List) {
+          for (final row in rows) {
+            if (row is Map) {
+              // Ensure we only insert Map<String, Object?>
+              final safeRow = row.map((key, value) => MapEntry(key.toString(), value));
+              await txn.insert(table, safeRow);
+            }
+          }
         }
       }
     });

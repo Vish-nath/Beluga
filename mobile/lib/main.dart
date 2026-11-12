@@ -323,7 +323,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       final file = await FilePicker.pickFile(type: FileType.any);
       if (file == null) return;
       final bytes = await file.readAsBytes();
-      final content = utf8.decode(bytes);
+      final content = utf8.decode(bytes, allowMalformed: true);
       await LocalDatabase.instance.importAllData(content);
       await _syncNotifications();
       widget.onComplete();
