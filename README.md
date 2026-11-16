@@ -2,7 +2,8 @@
   <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Spouting%20Whale.png" alt="Whale" width="120" />
   
   # 🐳 Beluga Health 
-  
+  <img src="https://user-images.githubusercontent.com/74038190/212284100-561aa473-3905-4a80-b561-0d28506553ee.gif" width="700" alt="Header Banner" />
+
   **Your Offline Nursing Assistant** 🩺💙  
   *Meal, Medication & Checkup Reminders — all without needing the internet.*
 
